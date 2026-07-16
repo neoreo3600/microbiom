@@ -18,6 +18,7 @@ import * as C from "../content/config";
 import { BOSSES, CHAIN_TREE, FEEDBACK_LOOPS } from "../content/bosses";
 import { HOSTS } from "../content/campaign";
 import { HOST_EVENTS, eventsForBoss } from "../content/events";
+import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel } from "../content/worlds";
 import { fmt, fmtRate, fmtRemain, fmtDuration } from "./format";
 
 export interface InspectorActions {
@@ -152,6 +153,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       growthPanel(s, now),
       boosterOfflinePanel(),
       prestigeSavePanel(s, genes),
+      worldsPanel(s),
       chainTreePanel(),
       modifiersPanel(s, now),
     ].join("");
@@ -225,7 +227,11 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
          </div>`
       : "";
 
-    return section(`보스전 — ${e.disease} <span class="muted">[${e.world}] 감정:${e.emotion}</span>`, `
+    const w = worldById(e.world);
+    const worldStr = w
+      ? `${ELEMENT_LABEL[w.element]}·${w.organ} · 감정:${w.emotion} · 오미:${tasteLabel(w.tasteResource)}`
+      : `${e.world} · 감정:${e.emotion}`;
+    return section(`보스전 — ${e.disease} <span class="muted">[${worldStr}]</span>`, `
       ${hostCard}
       <div class="row wrap">
         <span class="phase">${PHASE_LABEL[e.phase]}</span>
@@ -383,6 +389,19 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
         <button data-action="reset" class="danger">하드 리셋</button>
       </div>
       <div class="muted">이주 = 지혜(genes·도감) 계승 + 몸(EP·생산·뿌리노드) 리셋. 이주 ${s.prestige.migrations}회</div>`);
+  }
+
+  // ── 오행 6월드 (무대 = 오장육부) ──
+  function worldsPanel(s: GameState): string {
+    const cur = s.encounter?.world;
+    const rows = WORLDS.map((w) => {
+      const active = w.id === cur;
+      return `<div class="li"><span class="${active ? "egood" : ""}">${active ? "▶ " : ""}${ELEMENT_LABEL[w.element]} · ${w.organ}</span>
+        <span class="muted">감정:${w.emotion} · 오미:${tasteLabel(w.tasteResource)} · ${w.governedTissue}</span></div>`;
+    }).join("");
+    return section("오행 6월드 (무대 = 오장육부)", `
+      <div class="muted">오미 = 월드별 회복 자원 · 감정 = 빛(識) 전환 대상 · 주관 조직 = 증상 스킨</div>
+      <div class="list">${rows}</div>`);
   }
 
   function chainTreePanel(): string {
