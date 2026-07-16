@@ -17,7 +17,7 @@ import { HOSTS } from "../content/campaign";
 import { BOSSES } from "../content/bosses";
 import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
 import { UNITS, isRelevant } from "../content/units";
-import { unitAvatar } from "./art";
+import { unitAvatar, worldBackdrop } from "./art";
 import { tasteAmount, TASTE_COST } from "../engine/taste";
 import type { InspectorActions, InspectorCtx } from "../debug/inspector";
 import { fmt } from "../debug/format";
@@ -230,7 +230,11 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
       : tab === "roster" ? renderRoster(s)
       : tab === "map" ? renderMap(s)
       : renderBoss(s);
-    root.innerHTML = `<div class="g-screen">${body}</div>${tabBar()}${onboarding()}`;
+    // 보스전에는 그 월드의 오행 배경을 깐다 (카드는 불투명이라 가독성 유지)
+    const backdrop = tab === "boss" && e
+      ? `<div class="g-backdrop">${worldBackdrop(worldById(e.world)?.element)}</div>`
+      : "";
+    root.innerHTML = `<div class="g-screen ${backdrop ? "has-bg" : ""}">${backdrop}${body}</div>${tabBar()}${onboarding()}`;
     mountKey = key;
   }
 
@@ -488,6 +492,11 @@ function injectStyles() {
   .gm-cell.done { color:#86efac; border-color:#1f5133; }
   .gm-loop { font-size:12px; color:#fca5a5; padding:3px 0; }
   .g-screen { background:radial-gradient(130% 55% at 50% 0%, #131b26 0%, #0b0e13 62%); }
+  .g-screen.has-bg { background:#0b0e13; }
+  .g-backdrop { position:absolute; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+  .g-backdrop svg { display:block; width:100%; height:100%; }
+  .g-backdrop::after { content:""; position:absolute; inset:0; background:linear-gradient(180deg, rgba(11,14,19,0) 40%, rgba(11,14,19,.55) 100%); }
+  .g-screen.has-bg > .g-boss { position:relative; z-index:1; }
   @keyframes gpulse { 0%,100%{opacity:1} 50%{opacity:.5} }
   .g-gauge.over .g-gf, .g-gauge.over .g-gl { animation:gpulse .8s ease-in-out infinite; }
   @keyframes gfade { from{opacity:0} to{opacity:1} }

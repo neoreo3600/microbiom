@@ -7,7 +7,7 @@
 // 교체 방법: content/units.ts 의 유닛에 art:"<svg ...>...</svg>" 를 넣으면 그게 우선한다.
 // 아무 것도 안 넣으면 이 파일이 오행 팔레트 기반 마스코트를 자동으로 그려 슬롯을 채운다.
 
-import type { UnitDef } from "../engine/state";
+import type { UnitDef, Element } from "../engine/state";
 
 // ── 결정론적 난수 (id 문자열 → 시드) ──────────────────────────
 function hashStr(s: string): number {
@@ -146,5 +146,117 @@ export function unitAvatar(unit: UnitDef, size = 48): string {
     ${nucleus}
     ${face}
     ${crown}
+  </svg>`;
+}
+
+// ── 오행 6월드 배경 (보스전 무대) ────────────────────────────────
+// 은유적 생태 풍경. 어두운 UI 위에서 은은하게 — 카드/텍스트 가독성을 해치지 않게 낮은 투명도.
+// 각 오행에 팔레트 + 모티프(숲·불씨·대지·안개·물결·신경망). §0 — 공포/의료 묘사 없음.
+
+const VB = { w: 400, h: 800 };
+
+function glow(cx: number, cy: number, r: number, color: string, op: number): string {
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" opacity="${op}"/>`;
+}
+// 하단을 채우는 물결/능선 띠
+function ridge(y: number, amp: number, color: string, op: number): string {
+  return `<path d="M0 ${y} C 110 ${y - amp}, 290 ${y + amp}, 400 ${y - amp * 0.6} L400 ${VB.h} L0 ${VB.h} Z" fill="${color}" opacity="${op}"/>`;
+}
+// 수평 안개/오라 띠
+function band(y: number, h: number, color: string, op: number): string {
+  return `<rect x="-20" y="${y}" width="440" height="${h}" rx="${h / 2}" fill="${color}" opacity="${op}"/>`;
+}
+function dots(seed: number, n: number, color: string, r: number, op: number, yTop: number, yBot: number): string {
+  const rnd = mulberry32(seed);
+  let out = "";
+  for (let i = 0; i < n; i++) {
+    const x = rnd() * VB.w;
+    const y = yTop + rnd() * (yBot - yTop);
+    out += `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${(r * (0.6 + rnd() * 0.8)).toFixed(1)}" fill="${color}" opacity="${(op * (0.5 + rnd() * 0.5)).toFixed(2)}"/>`;
+  }
+  return out;
+}
+
+const SKY: Record<Element, [string, string]> = {
+  wood: ["hsl(135 32% 13%)", "#0b0e13"],
+  fire: ["hsl(16 40% 14%)", "#0b0e13"],
+  earth: ["hsl(40 34% 13%)", "#0b0e13"],
+  metal: ["hsl(200 14% 15%)", "#0b0e13"],
+  water5: ["hsl(212 42% 13%)", "#0b0e13"],
+  ministerfire: ["hsl(276 34% 14%)", "#0b0e13"],
+};
+
+function motif(el: Element): string {
+  switch (el) {
+    case "wood": // 숲 — 능선 + 나무 실루엣
+      return (
+        glow(80, 150, 150, "hsl(135 55% 40%)", 0.1) +
+        ridge(560, 60, "hsl(135 42% 16%)", 0.9) +
+        ridge(650, 40, "hsl(135 46% 12%)", 0.9) +
+        `<g opacity="0.5" fill="hsl(135 40% 20%)">
+           <ellipse cx="70" cy="540" rx="34" ry="46"/><rect x="66" y="560" width="8" height="40"/>
+           <ellipse cx="330" cy="560" rx="26" ry="36"/><rect x="327" y="576" width="6" height="34"/>
+         </g>` +
+        dots(11, 14, "hsl(135 60% 55%)", 2.4, 0.5, 120, 560)
+      );
+    case "fire": // 불 — 따뜻한 화로 빛 + 피어오르는 불씨
+      return (
+        glow(200, 120, 200, "hsl(24 82% 48%)", 0.14) +
+        glow(200, 120, 90, "hsl(38 90% 58%)", 0.12) +
+        ridge(620, 44, "hsl(14 50% 18%)", 0.9) +
+        dots(21, 26, "hsl(30 90% 60%)", 2.6, 0.6, 200, 640)
+      );
+    case "earth": // 흙 — 층층 대지 + 곡물 알갱이
+      return (
+        glow(300, 160, 150, "hsl(42 60% 46%)", 0.1) +
+        ridge(520, 30, "hsl(38 40% 20%)", 0.85) +
+        ridge(600, 26, "hsl(36 42% 16%)", 0.9) +
+        ridge(680, 22, "hsl(34 44% 12%)", 0.92) +
+        dots(31, 18, "hsl(44 70% 60%)", 2.2, 0.45, 300, 560)
+      );
+    case "metal": // 금 — 폐·호흡의 옅은 안개 띠
+      return (
+        glow(210, 140, 170, "hsl(200 20% 62%)", 0.08) +
+        band(280, 34, "hsl(200 18% 66%)", 0.07) +
+        band(360, 26, "hsl(200 16% 70%)", 0.06) +
+        band(450, 30, "hsl(200 18% 60%)", 0.06) +
+        dots(41, 10, "hsl(200 20% 80%)", 2, 0.3, 120, 520)
+      );
+    case "water5": // 수 — 깊은 물결 + 기포
+      return (
+        glow(200, 620, 220, "hsl(212 70% 44%)", 0.12) +
+        ridge(520, 40, "hsl(212 50% 20%)", 0.85) +
+        ridge(600, 34, "hsl(214 54% 16%)", 0.9) +
+        ridge(680, 28, "hsl(216 58% 12%)", 0.92) +
+        dots(51, 20, "hsl(200 80% 66%)", 2.6, 0.5, 300, 660)
+      );
+    case "ministerfire": // 상화 — 신경·림프의 오로라 망
+      return (
+        glow(140, 160, 160, "hsl(276 60% 50%)", 0.12) +
+        glow(300, 320, 150, "hsl(250 60% 52%)", 0.1) +
+        `<g fill="none" stroke="hsl(276 65% 62%)" stroke-width="1.4" opacity="0.28">
+           <path d="M-10 300 C 120 240, 260 380, 420 300"/>
+           <path d="M-10 380 C 130 460, 280 300, 420 400"/>
+         </g>` +
+        dots(61, 22, "hsl(280 75% 70%)", 2.2, 0.5, 120, 620)
+      );
+  }
+}
+
+/** 오행 월드 배경 SVG (보스전 무대). element 미지정 시 중립 배경. */
+export function worldBackdrop(el: Element | undefined): string {
+  const key: Element = el ?? "earth";
+  const [top, base] = SKY[key];
+  const gid = `sky_${key}`;
+  return `<svg viewBox="0 0 ${VB.w} ${VB.h}" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${top}"/>
+        <stop offset="60%" stop-color="${base}"/>
+        <stop offset="100%" stop-color="${base}"/>
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="${VB.w}" height="${VB.h}" fill="url(#${gid})"/>
+    ${motif(key)}
   </svg>`;
 }
