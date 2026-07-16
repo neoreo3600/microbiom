@@ -4,6 +4,8 @@
 
 import Decimal from "break_infinity.js";
 import { resourceRate } from "./modifiers";
+import { stepEcosystem } from "./meters";
+import { evaluatePhase } from "./boss";
 import { addBalance, addLifetime, type GameState } from "./state";
 
 const FIXED_STEP_MS = 100; // 내부 고정 스텝 (0.1s)
@@ -36,6 +38,12 @@ export function tick(s: GameState, now: number): boolean {
         addLifetime(s, res.id, produced);
       }
     }
+
+    // 생태계 시뮬레이션 (미터·염증·해독·게이지)
+    const dtNum = stepMs / 1000;
+    stepEcosystem(s, dtNum, stepNow);
+    // 보스 페이즈 진행/승리 평가
+    evaluatePhase(s);
 
     // 만료된 임시 modifier 제거
     pruneExpired(s, stepNow);

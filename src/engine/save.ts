@@ -70,6 +70,7 @@ export function serialize(s: GameState): string {
       genes: decMap(s.prestige.genes),
     },
     lifetime: decMap(s.lifetime),
+    encounter: s.encounter, // 전부 number/string → JSON 직접 직렬화
     lastSeenAt: s.lastSeenAt,
   };
   return JSON.stringify(data);
@@ -144,6 +145,7 @@ export function deserialize(
       genes: strMap(d.prestige?.genes ?? d.prestige?.currency ?? {}),
     },
     lifetime: strMap(d.lifetime ?? {}),
+    encounter: d.encounter ?? undefined,
     lastSeenAt: d.lastSeenAt ?? Date.now(),
   };
 }

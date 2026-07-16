@@ -114,6 +114,8 @@ export interface DiseaseGauge {
   behavior: "fill" | "drain" | "stealthGrow";
   drivers: string[];
   overflow: string;
+  fill?: number; // 초당 기본 변화량 (튜닝)
+  stableBand?: number; // 승리 판정용 안정 상한 (튜닝)
 }
 
 /** 페이즈 진입 조건식 (데이터로 기술) */
@@ -145,6 +147,39 @@ export interface Boss {
   phases: { circulation: Gate; purification: Gate; regeneration: Gate };
   victory: VictoryCond; // 항상성 밴드
   archetype?: string; // cancer_base 등 상속
+  // ── 게임 튜닝(선택) ──
+  heatPolarity?: number; // 순환 시 온기 방향: +1 보(당뇨) / -1 사·淸熱(자가면역)
+  attackRaisesGauge?: number; // 공격(딜) 시 게이지 상승량 — 역설 보스(자가면역)
+  debuffs?: Omit<Modifier, "id" | "source">[]; // 시작 시 부여되는 디버프(인슐린저항 등)
+}
+
+/** 보스전 페이즈 (순환→정화→재생→승리) */
+export type PhaseKey = "circulation" | "purification" | "regeneration" | "won";
+
+/**
+ * 보스 인카운터 진행 상태 (연속 시뮬레이션 대상).
+ * Boss config 로부터 시작 시 채워지고, 틱마다 게이지/염증이 굴러간다.
+ */
+export interface Encounter {
+  bossId: string;
+  disease: string;
+  world: string;
+  emotion: string; // 빛(mind) 전환 대상
+  phase: PhaseKey;
+  gauge: number; // 질병 고유 게이지 (혈당/면역과활성/색채…). overflow 는 >1
+  gaugeLabel: string;
+  gaugeBehavior: "fill" | "drain" | "stealthGrow";
+  gaugeFill: number; // 초당 기본 변화량
+  gaugeStableBand: number; // 승리 판정용 게이지 안정 상한
+  inflammationRegen: number; // 이 보스의 염증 self-regen (per sec)
+  detoxInflow: number; // 이 보스의 해독 부담 유입 (per sec)
+  heatPolarity: number; // 순환 시 온기 방향 (+1 보 / -1 사)
+  attackRaisesGauge: number; // 공격 시 게이지 상승 (역설)
+  relapseResist: number; // 클리어 후 재발 저항 (0..1)
+  paradox?: string;
+  // 페이즈 게이트식(데이터) & 승리 밴드 — 엔진이 content 없이 자체 평가
+  gates: { circulation: string; purification: string; regeneration: string };
+  victory: { meters: number; inflammationMax: number };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -161,6 +196,7 @@ export interface GameState {
   collection: Set<string>; // 획득한 mutation id
   prestige: { migrations: number; genes: Record<string, Decimal> }; // 이주 횟수 + 영구 통화
   lifetime: Record<string, Decimal>; // 누적 통계 (환생 변환식 입력)
+  encounter?: Encounter; // 현재 보스전 진행 상태 (없으면 자유 성장 모드)
   lastSeenAt: number;
 }
 
@@ -193,4 +229,18 @@ export function addLifetime(s: GameState, id: string, delta: Decimal): void {
 /** 미터 값 clamp 헬퍼 (0..1) */
 export function clampMeter(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/** 4미터 평균 (생태계 건강도) */
+export function meterAverage(s: GameState): number {
+  return METER_KEYS.reduce((a, k) => a + s.meters[k], 0) / METER_KEYS.length;
+}
+
+/**
+ * 미터 평균 건강도 → 생산 배수. 생태계가 건강할수록 자원 생산이 늘어난다.
+ * (뿌리노드 → 미터 → 생산 으로 이어지는 사슬의 마지막 고리)
+ * 하한 0.1 로 완전 붕괴여도 최소 생산은 유지.
+ */
+export function meterHealthMult(s: GameState): number {
+  return Math.max(0.1, meterAverage(s));
 }
