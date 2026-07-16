@@ -17,6 +17,7 @@ import { HOSTS } from "../content/campaign";
 import { BOSSES } from "../content/bosses";
 import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
 import { UNITS, isRelevant } from "../content/units";
+import { unitAvatar } from "./art";
 import { tasteAmount, TASTE_COST } from "../engine/taste";
 import type { InspectorActions, InspectorCtx } from "../debug/inspector";
 import { fmt } from "../debug/format";
@@ -347,9 +348,12 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
         const n = unitCount(s, u.id);
         const rel = isRelevant(u, bossId);
         return `<div class="g-unit ${n > 0 ? "" : "dim"}">
-          <div><span class="${rel ? "g-rel" : ""}">${rel ? "★ " : ""}${u.name}</span>
-            <small class="r-${u.rarity}"> ${u.rarity}</small>${n > 0 ? ` <b>×${n}</b>` : ""}</div>
-          <small class="g-muted">${u.role}</small></div>`;
+          <span class="g-uart ${n > 0 ? "" : "locked"}">${unitAvatar(u, 46)}</span>
+          <div class="g-utxt">
+            <div><span class="${rel ? "g-rel" : ""}">${rel ? "★ " : ""}${u.name}</span>
+              <small class="r-${u.rarity}"> ${u.rarity}</small>${n > 0 ? ` <b>×${n}</b>` : ""}</div>
+            <small class="g-muted">${u.role}</small>
+          </div></div>`;
       }).join("");
     return `
       <div class="g-cardtitle">히어로 로스터 <span class="g-muted">${owned}/${UNITS.length}</span></div>
@@ -458,8 +462,11 @@ function injectStyles() {
   .g-buy:active:not(:disabled) { transform:translateY(1px); }
   .g-cost { color:#4ade80; font-weight:700; white-space:nowrap; }
   .g-units { display:flex; flex-direction:column; gap:6px; }
-  .g-unit { background:#12161c; border:1px solid #232b35; border-radius:8px; padding:8px 12px; }
-  .g-unit.dim { opacity:.5; }
+  .g-unit { background:#12161c; border:1px solid #232b35; border-radius:8px; padding:8px 12px; display:flex; align-items:center; gap:10px; }
+  .g-unit.dim { opacity:.62; }
+  .g-uart { flex:0 0 auto; width:46px; height:46px; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
+  .g-uart.locked { filter:grayscale(1) brightness(.72); opacity:.7; }
+  .g-utxt { min-width:0; }
   .g-unit b { color:#e8eef5; }
   .g-rel { color:#86efac; }
   .r-common { color:#9ca3af; } .r-rare { color:#60a5fa; } .r-epic { color:#c084fc; } .r-legendary { color:#fbbf24; }
