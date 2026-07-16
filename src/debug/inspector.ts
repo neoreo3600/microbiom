@@ -80,7 +80,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorActions extends
 
     const ep = s.resources[C.RESOURCE_IDS.EP].amount;
     const epRate = resourceRate(s, C.RESOURCE_IDS.EP, now);
-    const genes = s.prestige.currency[C.PRESTIGE_CURRENCY] ?? new Decimal(0);
+    const genes = s.prestige.genes[C.PRESTIGE_CURRENCY] ?? new Decimal(0);
     const lifeEP = s.lifetime[C.RESOURCE_IDS.EP] ?? new Decimal(0);
     const gen = s.generators[C.MAIN_GENERATOR_ID];
     const prestigeGain = C.PRESTIGE.gainFormula(s);
@@ -92,7 +92,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorActions extends
           ${stat("EP/s", fmtRate(epRate))}
           ${stat("genes", fmt(genes))}
           ${stat("lifetime EP", fmt(lifeEP))}
-          ${stat("환생 횟수", String(s.prestige.count))}
+          ${stat("이주 횟수", String(s.prestige.migrations))}
         </div>`),
 
       section("진화 (Generator tier)", `
@@ -173,7 +173,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorActions extends
     return `<div class="list">${C.PRESTIGE.permanentUpgrades.map((up) => {
       const maxed = up.maxLevel !== undefined && up.level >= up.maxLevel;
       const cost = nextCost(s, up, now);
-      const bal = s.prestige.currency[C.PRESTIGE_CURRENCY] ?? new Decimal(0);
+      const bal = s.prestige.genes[C.PRESTIGE_CURRENCY] ?? new Decimal(0);
       const afford = !maxed && bal.gte(cost);
       const g = up.grants;
       const eff = `${g.scope}/${g.target} ${g.type}=${fmt(g.value)}`;

@@ -60,10 +60,14 @@ export function serialize(s: GameState): string {
       expiresAt: m.expiresAt,
       // condition 은 저장하지 않는다 (로드 시 reattach)
     })),
+    meters: s.meters,
+    inflammation: s.inflammation,
+    detox: s.detox,
+    rootnode: s.rootnode,
     collection: Array.from(s.collection),
     prestige: {
-      count: s.prestige.count,
-      currency: decMap(s.prestige.currency),
+      migrations: s.prestige.migrations,
+      genes: decMap(s.prestige.genes),
     },
     lifetime: decMap(s.lifetime),
     lastSeenAt: s.lastSeenAt,
@@ -118,14 +122,26 @@ export function deserialize(
     return mod;
   });
 
+  const DEFAULT_METERS = { gut: 0.5, water: 0.5, warmth: 0.5, mind: 0.5 };
+  const DEFAULT_ROOT = {
+    diversity: 0.5,
+    outputs: { immune: 0.5, neuro: 0.5, scfa: 0.5, detox: 0.5 },
+  };
+
   return {
     resources,
     generators,
     modifiers,
+    meters: { ...DEFAULT_METERS, ...(d.meters ?? {}) },
+    inflammation: d.inflammation ?? 0,
+    detox: d.detox ?? 0,
+    rootnode: d.rootnode
+      ? { diversity: d.rootnode.diversity ?? 0.5, outputs: { ...DEFAULT_ROOT.outputs, ...(d.rootnode.outputs ?? {}) } }
+      : DEFAULT_ROOT,
     collection: new Set<string>(d.collection ?? []),
     prestige: {
-      count: d.prestige?.count ?? 0,
-      currency: strMap(d.prestige?.currency ?? {}),
+      migrations: d.prestige?.migrations ?? d.prestige?.count ?? 0,
+      genes: strMap(d.prestige?.genes ?? d.prestige?.currency ?? {}),
     },
     lifetime: strMap(d.lifetime ?? {}),
     lastSeenAt: d.lastSeenAt ?? Date.now(),

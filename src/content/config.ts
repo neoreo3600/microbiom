@@ -243,8 +243,17 @@ export function createInitialState(now: number): GameState {
     resources,
     generators,
     modifiers,
+    // 4대 미터 — 무너진 상태에서 시작하지 않고 중립(0.5)에서 출발 (보스전 진입 시 boss.startMeters 로 덮어씀)
+    meters: { gut: 0.5, water: 0.5, warmth: 0.5, mind: 0.5 },
+    inflammation: 0,
+    detox: 0,
+    // 뿌리노드(마이크로바이옴) — diversity 가 내구도. 초반은 취약한 숙주라 낮게 출발.
+    rootnode: {
+      diversity: 0.3,
+      outputs: { immune: 0.3, neuro: 0.3, scfa: 0.3, detox: 0.3 },
+    },
     collection: new Set<string>(),
-    prestige: { count: 0, currency: {} },
+    prestige: { migrations: 0, genes: {} },
     lifetime: {},
     lastSeenAt: now,
   };
