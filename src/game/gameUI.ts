@@ -18,6 +18,7 @@ import { BOSSES } from "../content/bosses";
 import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
 import { UNITS, isRelevant } from "../content/units";
 import { unitAvatar, worldBackdrop, bossEmblem } from "./art";
+import { sfx, floatText, burst, confetti, initSoundToggle } from "./juice";
 import { tasteAmount, TASTE_COST } from "../engine/taste";
 import type { InspectorActions, InspectorCtx } from "../debug/inspector";
 import { fmt } from "../debug/format";
@@ -38,10 +39,15 @@ const PHASES: { key: string; label: string }[] = [
 
 export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
   injectStyles();
+  initSoundToggle();
   root.classList.add("g-root");
 
   let tab: "boss" | "growth" | "roster" | "map" = "boss";
   let mountKey = "";
+  // 페이즈/승리 전환 감지용 (연출 1회 발화)
+  let prevPhase: string | undefined;
+  let prevBoss: string | undefined;
+  const PHASE_ORDER = ["circulation", "purification", "regeneration", "won"];
 
   root.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
@@ -55,27 +61,52 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
     if (!el) return;
     const a = ctx.actions as InspectorActions;
     const id = el.dataset.id;
+    // 탭 지점 기준 이펙트 헬퍼
+    const fx = (color: string, label: string) => {
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      burst(cx, r.top + r.height / 2, color);
+      floatText(cx, r.top, label, color);
+    };
     switch (el.dataset.action) {
-      case "circulate": a.circulate(); flashBars(["water", "warmth"]); break;
-      case "purify": a.purify(); flashBars(["infl"]); break;
-      case "regenerate": a.regenerate(); flashBars(["gut"]); break;
-      case "attack": a.attack(); break;
-      case "crisis": a.crisis(); break;
-      case "meditation": a.meditation(); break;
-      case "drawHero": a.drawHero(); break;
-      case "useTaste": a.useTaste(); break;
-      case "migrate": a.migrate(); break;
+      case "circulate": a.circulate(); flashBars(["water", "warmth"]); sfx.circulate(); fx("#6cc6f5", "💧 물길·온기 ▲"); break;
+      case "purify": a.purify(); flashBars(["infl"]); sfx.purify(); fx("#ff8f9c", "🫧 염증·게이지 ▼"); break;
+      case "regenerate": a.regenerate(); flashBars(["gut"]); sfx.regen(); fx("#6fe0a6", "🌱 숲·빛·뿌리 ▲"); break;
+      case "attack":
+        a.attack();
+        if (el.classList.contains("danger")) { sfx.blocked(); fx("#ff8f9c", "⚠ 자해"); } else { sfx.chime(); }
+        break;
+      case "crisis": a.crisis(); sfx.chime(); break;
+      case "meditation": a.meditation(); sfx.chime(); break;
+      case "drawHero": a.drawHero(); sfx.chime(); break;
+      case "useTaste": a.useTaste(); sfx.chime(); fx("#ffd36b", "✨ 오미 사용"); break;
+      case "migrate": a.migrate(); sfx.chime(); break;
       case "startBoss": a.startBoss(id!); break;
-      case "evolve": a.evolve(); break;
-      case "buyUpgrade": a.buyUpgrade(id!); break;
-      case "buyPermanent": a.buyPermanent(id!); break;
-      case "draw": a.draw(); break;
+      case "evolve": a.evolve(); sfx.chime(); break;
+      case "buyUpgrade": a.buyUpgrade(id!); sfx.chime(); break;
+      case "buyPermanent": a.buyPermanent(id!); sfx.chime(); break;
+      case "draw": a.draw(); sfx.chime(); break;
       case "dismissOnboard":
         try { localStorage.setItem("soknara.onboarded", "1"); } catch { /* noop */ }
         break;
     }
     render();
   });
+
+  // 페이즈 전진(순→정→재→승리)에 연출·사운드 1회
+  function detectPhase(e?: { phase: string; bossId: string }): void {
+    if (!e) { prevPhase = undefined; prevBoss = undefined; return; }
+    if (e.bossId === prevBoss && prevPhase) {
+      const pi = PHASE_ORDER.indexOf(prevPhase);
+      const ci = PHASE_ORDER.indexOf(e.phase);
+      if (ci > pi) {
+        if (e.phase === "won") { sfx.win(); confetti(); }
+        else { sfx.phase(); burst(window.innerWidth / 2, 150, "#ffd36b", 14); }
+      }
+    }
+    prevPhase = e.phase;
+    prevBoss = e.bossId;
+  }
 
   function flashBars(keys: string[]): void {
     keys.forEach((k) => {
@@ -220,6 +251,7 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
   function render() {
     const s = ctx.getState();
     const e = s.encounter;
+    detectPhase(e);
     let onb = "1";
     try { onb = localStorage.getItem("soknara.onboarded") ? "1" : "0"; } catch { /* noop */ }
     const key = `${tab}|${!!e}|${e?.bossId}|${e?.phase}|${s.campaign.hostIndex}|${onb}`;
