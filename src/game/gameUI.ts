@@ -15,7 +15,7 @@ import { computeCost } from "../engine/cost";
 import * as C from "../content/config";
 import { HOSTS } from "../content/campaign";
 import { BOSSES } from "../content/bosses";
-import { worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
+import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
 import { UNITS, isRelevant } from "../content/units";
 import { tasteAmount, TASTE_COST } from "../engine/taste";
 import type { InspectorActions, InspectorCtx } from "../debug/inspector";
@@ -39,7 +39,7 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
   injectStyles();
   root.classList.add("g-root");
 
-  let tab: "boss" | "growth" | "roster" = "boss";
+  let tab: "boss" | "growth" | "roster" | "map" = "boss";
 
   root.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
@@ -176,8 +176,46 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
   // ── 탭 라우팅 ──
   function render() {
     const s = ctx.getState();
-    const body = tab === "growth" ? renderGrowth(s) : tab === "roster" ? renderRoster(s) : renderBoss(s);
+    const body =
+      tab === "growth" ? renderGrowth(s)
+      : tab === "roster" ? renderRoster(s)
+      : tab === "map" ? renderMap(s)
+      : renderBoss(s);
     root.innerHTML = `<div class="g-screen">${body}</div>${tabBar()}${onboarding()}`;
+  }
+
+  function heat(v: number): string {
+    const c = clampMeter(v);
+    return `rgb(${Math.round(230 * (1 - c) + 20)},${Math.round(200 * c + 30)},60)`;
+  }
+
+  // ── 몸지도 탭 (만류귀종) ──
+  function renderMap(s: GameState): string {
+    const curWorld = s.encounter?.world;
+    const curBoss = s.encounter?.bossId;
+    const rootNode = `<span class="gm-node" style="background:${heat(s.rootnode.diversity)}">🦠 뿌리 ${s.rootnode.diversity.toFixed(2)}</span>`;
+    const gates = (Object.keys(METER_META) as MeterKey[])
+      .map((k) => `<span class="gm-node" style="background:${heat(s.meters[k])}">${METER_META[k].label} ${s.meters[k].toFixed(2)}</span>`).join("");
+    const worlds = WORLDS
+      .map((wo) => `<span class="gm-cell ${wo.id === curWorld ? "on" : ""}">${ELEMENT_LABEL[wo.element].charAt(0)}·${wo.organ}</span>`).join("");
+    const symptoms = BOSSES.map((b) => {
+      const healed = s.collection.has(`boss:${b.id}`);
+      const cls = b.id === curBoss ? "on" : healed ? "done" : "";
+      return `<span class="gm-cell ${cls}">${healed ? "✓" : ""}${b.disease}</span>`;
+    }).join("");
+    const loops = feedbackLoops(s).filter((l) => l.active)
+      .map((l) => `<div class="gm-loop">🔴 ${l.id} <span class="g-muted">강도 ${l.intensity.toFixed(2)} — ${l.cut}</span></div>`).join("") || `<div class="g-muted">현재 악순환 없음 — 안정</div>`;
+    return `
+      <div class="g-cardtitle">몸지도 (만류귀종)</div>
+      <div class="g-muted" style="margin-bottom:10px">뿌리를 정비하면 하류가 스스로 약해집니다 — <b style="color:#86efac">"장부터"가 이득</b>.</div>
+      <div class="gm-row">${rootNode}</div>
+      <div class="gm-arrow">↓ 4출력 배급</div>
+      <div class="gm-row">${gates}</div>
+      <div class="gm-arrow">↓ 불균형이 장부색으로</div>
+      <div class="gm-row">${worlds}</div>
+      <div class="gm-arrow">↓ 하류 증상</div>
+      <div class="gm-row">${symptoms}</div>
+      <div class="g-card" style="margin-top:12px"><div class="g-cardh">되먹임 (악순환)</div>${loops}</div>`;
   }
 
   // 첫 실행 온보딩 인트로 (1회)
@@ -205,7 +243,7 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
   function tabBar(): string {
     const t = (key: string, label: string, icon: string) =>
       `<button class="g-tab ${tab === key ? "on" : ""}" data-tab="${key}"><span class="g-tab-ic">${icon}</span><span>${label}</span></button>`;
-    return `<div class="g-tabbar">${t("boss", "보스전", "⚕")}${t("growth", "성장", "🌱")}${t("roster", "로스터", "🦠")}</div>`;
+    return `<div class="g-tabbar">${t("boss", "보스전", "⚕")}${t("growth", "성장", "🌱")}${t("roster", "로스터", "🦠")}${t("map", "몸지도", "🗺")}</div>`;
   }
 
   // ── 성장 탭 ──
@@ -298,7 +336,7 @@ function injectStyles() {
   if (injected) return;
   injected = true;
   const css = `
-  .g-root { max-width:480px; margin:0 auto; }
+  .g-root { max-width:480px; margin:0 auto; font-family:-apple-system, system-ui, "Segoe UI", Roboto, "Noto Sans KR", sans-serif; }
   .g-screen { padding:12px 14px 80px; position:relative; min-height:100vh; box-sizing:border-box; }
   .g-muted { color:#8b96a5; font-size:12px; }
   .g-empty { text-align:center; padding-top:30vh; }
@@ -386,6 +424,13 @@ function injectStyles() {
   .g-intro-hands .i1 { color:#38bdf8; } .g-intro-hands .i2 { color:#f87171; } .g-intro-hands .i3 { color:#4ade80; }
   .g-intro-disc { font-size:11px; color:#fbbf24; line-height:1.6; margin:0 0 16px; }
   .g-intro-disc b { color:#fde68a; }
+  .gm-row { display:flex; flex-wrap:wrap; gap:5px; justify-content:center; margin:3px 0; }
+  .gm-arrow { text-align:center; color:#5b6472; font-size:11px; margin:2px 0; }
+  .gm-node { font-size:11px; padding:3px 9px; border-radius:12px; color:#0a0f14; font-weight:700; }
+  .gm-cell { font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid #2b3540; color:#8b96a5; }
+  .gm-cell.on { border-color:#4ade80; color:#dcfce7; background:#14532d; font-weight:700; }
+  .gm-cell.done { color:#86efac; border-color:#1f5133; }
+  .gm-loop { font-size:12px; color:#fca5a5; padding:3px 0; }
   `;
   const style = document.createElement("style");
   style.textContent = css;
