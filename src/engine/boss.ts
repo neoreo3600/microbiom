@@ -74,6 +74,7 @@ export function startEncounter(s: GameState, boss: Boss): void {
     },
     victory: { meters: boss.victory.meters, inflammationMax: boss.victory.inflammationMax },
     mindLock: boss.mindLock,
+    sensitive: boss.sensitive ?? false,
   };
   s.encounter = enc;
 

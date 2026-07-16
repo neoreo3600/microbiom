@@ -107,6 +107,7 @@ export const DEPRESSION: Boss = {
     stableBand: 0.5,
   },
   heatPolarity: 1, // 뇌 에너지 재점화(열↑) — 무기력의 물질적 기반부터
+  sensitive: true, // 민감 주제 — 프레이밍 강조
   paradox: "'그냥 긍정'은 불가능 — 몸(지반)을 먼저 고쳐야 마음(識)이 열린다",
   // ★ 식(識) 잠금: 지반(장·수·열 평균 ≥0.6, 염증 ≤0.4) 전엔 빛(mind) cap 0.35
   mindLock: { foundationMeters: 0.6, foundationInflammation: 0.4, cap: 0.35 },
@@ -141,6 +142,7 @@ const CANCER_BASE: Omit<Boss, "id" | "disease" | "world" | "organ" | "tasteResou
   },
   heatPolarity: 1,
   archetype: "cancer_base",
+  sensitive: true, // 민감 주제 — 프레이밍 강조
   paradox: "'죽이기' 아님 — 환경 교정으로 굶기고 감시망을 유지(관해)",
   // 치유 지혜(영구): 정기(면역감시) 강화 → 전 월드 생산 ×1.25
   clearReward: { scope: "globalRate", target: "*", type: "mult", value: D(1.25) },

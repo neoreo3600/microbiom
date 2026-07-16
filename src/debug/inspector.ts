@@ -239,7 +239,12 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
     const worldStr = w
       ? `${ELEMENT_LABEL[w.element]}·${w.organ} · 감정:${w.emotion} · 오미:${tasteLabel(w.tasteResource)}`
       : `${e.world} · 감정:${e.emotion}`;
+    const sensitiveBanner = e.sensitive
+      ? `<div class="disclaimer">⚠ 이 게임은 몸속 생태계를 다루는 <b>은유적 체험</b>이며 <b>의학적 조언이 아닙니다</b>.
+           ${e.disease}은(는) 특히 전문적인 진단과 치료가 필요합니다. 회복은 혼자가 아니라 전문가와 함께.</div>`
+      : "";
     return section(`보스전 — ${e.disease} <span class="muted">[${worldStr}]</span>`, `
+      ${sensitiveBanner}
       ${hostCard}
       <div class="row wrap">
         <span class="phase">${PHASE_LABEL[e.phase]}</span>
@@ -578,6 +583,8 @@ function injectStyles() {
   .win button { margin-top:6px; background:#14532d; border-color:#166534; color:#dcfce7; }
   .host { background:#0f0f11; border:1px solid #222; border-radius:4px; padding:6px 8px; margin-bottom:6px; font-size:12px; }
   .host b { color:#f5f5f5; }
+  .disclaimer { background:#3a2e12; border:1px solid #7c5e10; border-radius:5px; padding:7px 9px; margin-bottom:7px; font-size:11px; color:#fde68a; line-height:1.5; }
+  .disclaimer b { color:#fef3c7; }
   .prev { display:flex; align-items:center; gap:8px; font-size:12px; padding:2px 0; }
   .prev .bl { width:80px; color:#cbd5e1; }
   .prev .pg { color:#4ade80; font-size:11px; }

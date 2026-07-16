@@ -166,6 +166,7 @@ export interface Boss {
   clearReward?: Omit<Modifier, "id" | "source">; // 승리 시 부여되는 영구 '치유 지혜' 배지 (이주해도 유지)
   // 식(識) 잠금 — 지반(장·수·열 평균, 염증)이 임계 넘기 전엔 빛(mind)에 cap. "몸을 고쳐야 마음이 열린다"(우울)
   mindLock?: { foundationMeters: number; foundationInflammation: number; cap: number };
+  sensitive?: boolean; // 민감 주제(우울·암) — 진입 시 프레이밍 강조 노출 (§0)
 }
 
 /** 보스전 페이즈 (순환→정화→재생→승리) */
@@ -197,6 +198,7 @@ export interface Encounter {
   gates: { circulation: string; purification: string; regeneration: string };
   victory: { meters: number; inflammationMax: number };
   mindLock?: { foundationMeters: number; foundationInflammation: number; cap: number };
+  sensitive: boolean; // 민감 주제 여부 (프레이밍 강조)
 }
 
 // ─────────────────────────────────────────────────────────────
