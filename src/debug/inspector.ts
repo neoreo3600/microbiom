@@ -17,6 +17,7 @@ import { evalGate, victoryMet } from "../engine/boss";
 import * as C from "../content/config";
 import { BOSSES, CHAIN_TREE, FEEDBACK_LOOPS } from "../content/bosses";
 import { HOSTS } from "../content/campaign";
+import { HOST_EVENTS, eventsForBoss } from "../content/events";
 import { fmt, fmtRate, fmtRemain, fmtDuration } from "./format";
 
 export interface InspectorActions {
@@ -40,6 +41,7 @@ export interface InspectorActions {
   regenerate(): void;
   attack(): void;
   migrate(): void;
+  hostEvent(id: string): void;
 }
 
 export interface InspectorCtx {
@@ -79,6 +81,13 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
 
   const history: Sample[] = [];
   const MAX_HISTORY = 600;
+  const eventLog: { label: string; kind: "bad" | "good"; at: number }[] = [];
+  function logEvent(id: string) {
+    const ev = HOST_EVENTS.find((e) => e.id === id);
+    if (!ev) return;
+    eventLog.unshift({ label: ev.label, kind: ev.kind, at: ctx.now() });
+    if (eventLog.length > 6) eventLog.pop();
+  }
 
   root.addEventListener("click", (e) => {
     const el = (e.target as HTMLElement).closest("[data-action]") as HTMLElement | null;
@@ -104,6 +113,16 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       case "regenerate": a.regenerate(); break;
       case "attack": a.attack(); break;
       case "migrate": a.migrate(); break;
+      case "hostEvent": logEvent(id!); a.hostEvent(id!); break;
+      case "randomEvent": {
+        const list = eventsForBoss(ctx.getState().encounter?.bossId);
+        if (list.length) {
+          const pick = list[Math.floor(Math.random() * list.length)];
+          logEvent(pick.id);
+          a.hostEvent(pick.id);
+        }
+        break;
+      }
     }
     render();
   });
@@ -128,6 +147,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       rootnodePanel(s),
       bossPanel(s),
       nextHostPreviewPanel(s),
+      weatherPanel(s),
       growthPanel(s, now),
       boosterOfflinePanel(),
       prestigeSavePanel(s, genes),
@@ -253,6 +273,29 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
         <span class="muted">${regenWorst.toFixed(3)} →</span> <b style="color:#ef4444">${regenNow.toFixed(3)}</b>
         <span class="pg">${regenNow < regenWorst ? "↓낮을수록 유리" : ""}</span></div>
       <div class="muted">재생 손길로 뿌리를 더 키우면 시작 미터↑·염증 regen↓ → 다음 보스가 수월해진다. "장부터"가 이득.</div>`);
+  }
+
+  // ── 숙주 일상 (날씨) ──
+  function weatherPanel(s: GameState): string {
+    const list = eventsForBoss(s.encounter?.bossId);
+    const buttons = list
+      .map((e) =>
+        `<button data-action="hostEvent" data-id="${e.id}" class="${e.kind}" title="${e.desc}">${e.kind === "bad" ? "⛈" : "☀"} ${e.label}</button>`
+      )
+      .join("");
+    const now = ctx.now();
+    const log = eventLog.length
+      ? eventLog
+          .map((l) =>
+            `<div class="li"><span class="${l.kind === "bad" ? "ebad" : "egood"}">${l.kind === "bad" ? "⛈" : "☀"} ${l.label}</span><span class="muted">${((now - l.at) / 1000).toFixed(0)}s 전</span></div>`
+          )
+          .join("")
+      : `<span class="muted">아직 없음</span>`;
+    return section("숙주 일상 (날씨) — 혼돈 엔진", `
+      <div class="muted">숙주의 하루가 속나라에 영향을 준다. "오늘 야식 먹었네" 하고 방어를 짠다.</div>
+      <div class="row wrap">${buttons}<button data-action="randomEvent">🎲 랜덤 날씨</button></div>
+      <div class="sub">최근 이벤트</div>
+      <div class="list">${log}</div>`);
   }
 
   // ── 성장엔진 (생산: 진화/업그레이드/뽑기/genes 트리) ──
@@ -440,6 +483,9 @@ function injectStyles() {
   .prev { display:flex; align-items:center; gap:8px; font-size:12px; padding:2px 0; }
   .prev .bl { width:80px; color:#cbd5e1; }
   .prev .pg { color:#4ade80; font-size:11px; }
+  button.bad { background:#3a1414; border-color:#5b2020; }
+  button.good { background:#123320; border-color:#1c5233; }
+  .ebad { color:#fca5a5; } .egood { color:#86efac; }
   .chain { font-size:11px; padding:2px 0; color:#cbd5e1; }
   .chain.root { color:#22d3ee; font-weight:600; }
   `;

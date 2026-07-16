@@ -19,8 +19,10 @@ import {
   regenerate,
   startEncounter,
 } from "./engine/boss";
+import { applyEvent } from "./engine/events";
 import { BOSSES } from "./content/bosses";
 import { HOSTS } from "./content/campaign";
+import { HOST_EVENTS } from "./content/events";
 import {
   loadFromStorage,
   saveToStorage,
@@ -178,6 +180,10 @@ const inspector = createInspector(app, {
     },
     attack() {
       forceAttack(state);
+    },
+    hostEvent(id) {
+      const ev = HOST_EVENTS.find((e) => e.id === id);
+      if (ev) applyEvent(state, ev, Date.now());
     },
   },
 });
