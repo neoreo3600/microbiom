@@ -85,7 +85,42 @@ export const AUTOIMMUNE_RA: Boss = {
   victory: { band: "면역관용", meters: 0.7, inflammationMax: 0.3 },
 };
 
-export const BOSSES: Boss[] = [DIABETES_T2, AUTOIMMUNE_RA];
+// ── 보스 #3 · 우울 (금·폐대장·장-뇌축 / 강요형) ────────────────
+// "그냥 긍정적으로 생각해"가 통하지 않음을 규칙으로 — 몸(지반)을 고쳐야 마음(識)이 열린다.
+// 존엄·희망 프레이밍(§0): 자해/위기 묘사 없음. 회복의 방향으로만.
+export const DEPRESSION: Boss = {
+  id: "depression",
+  disease: "우울",
+  world: "metal", // 대표 월드(슬픔·폐대장). 실제 뿌리는 장-뇌축으로 다층.
+  organ: "폐대장(장-뇌축)",
+  emotion: "슬픔·무기력",
+  tasteResource: "pungent", // 매운맛(발산·순환)
+  startMeters: { gut: 0.3, water: 0.4, warmth: 0.35, mind: 0.2 },
+  detoxBurden: "mid",
+  inflammation: { value: 0.65, regen: 0.045 }, // 신경염증
+  gauge: {
+    id: "안개(회색)",
+    behavior: "fill", // 안개가 차오른다(=색채가 빠진다). overflow 시 채도·생산↓
+    drivers: ["고립", "밤샘", "자책"],
+    overflow: "-allMeters · 채도↓",
+    fill: 0.02,
+    stableBand: 0.5,
+  },
+  heatPolarity: 1, // 뇌 에너지 재점화(열↑) — 무기력의 물질적 기반부터
+  paradox: "'그냥 긍정'은 불가능 — 몸(지반)을 먼저 고쳐야 마음(識)이 열린다",
+  // ★ 식(識) 잠금: 지반(장·수·열 평균 ≥0.6, 염증 ≤0.4) 전엔 빛(mind) cap 0.35
+  mindLock: { foundationMeters: 0.6, foundationInflammation: 0.4, cap: 0.35 },
+  // 치유 지혜(영구): 마음의 회복력 → 빛(mind) 지속 지지
+  clearReward: { scope: "meter", target: "mind", type: "add", value: D(0.004) },
+  phases: {
+    circulation: { requires: "water>=0.55 && warmth>=0.55" }, // 뇌 산소·에너지 재점화
+    purification: { requires: "inflammation<=0.4" }, // 신경염증 차단
+    regeneration: { requires: "gut>=0.7 && mind>=0.6" }, // 원료공장 재건 → 식 잠금 해제 후 파장 전환
+  },
+  victory: { band: "색채복귀", meters: 0.7, inflammationMax: 0.3 },
+};
+
+export const BOSSES: Boss[] = [DIABETES_T2, AUTOIMMUNE_RA, DEPRESSION];
 
 /** 만류귀종 연쇄 트리 (§7) — 표시·학습용 데이터 */
 export const CHAIN_TREE: { root: string; branches: { gate: string; diseases: string[] }[] } = {

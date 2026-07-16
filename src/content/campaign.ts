@@ -4,7 +4,7 @@
 // 명명·사연은 전부 교체 가능한 데이터. (프레이밍: 치료 아님, 회복의 방향으로만 — §0)
 
 import type { Boss } from "../engine/state";
-import { DIABETES_T2, AUTOIMMUNE_RA } from "./bosses";
+import { DIABETES_T2, AUTOIMMUNE_RA, DEPRESSION } from "./bosses";
 
 export interface Host {
   id: string;
@@ -31,6 +31,14 @@ export const HOSTS: Host[] = [
     bio: "아침마다 손이 뻣뻣해 아이를 안기 힘든 엄마.",
     boss: AUTOIMMUNE_RA,
     recoveryCut: "붓기가 가라앉고, 아침 강직이 풀려 다시 아이를 안는다.",
+  },
+  {
+    id: "host_park",
+    name: "박준영",
+    age: 29,
+    bio: "몇 달째 아침이 무겁고, 좋아하던 것에 흥미를 잃은 청년.",
+    boss: DEPRESSION,
+    recoveryCut: "색이 다시 보이고, 창을 열고, 친구의 연락에 답한다.",
   },
 ];
 

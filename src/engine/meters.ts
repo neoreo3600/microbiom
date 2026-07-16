@@ -77,11 +77,27 @@ export function meterPressure(s: GameState, key: MeterKey, now: number): number 
   return support + modAdd + feedback(s, key) - drag - overflow;
 }
 
+/** 식(識) 잠금 해제 여부 — 지반(장·수·열 평균) 회복 + 염증 진정 시 true */
+export function mindFoundationMet(
+  s: GameState,
+  lock: { foundationMeters: number; foundationInflammation: number }
+): boolean {
+  const avg = (s.meters.gut + s.meters.water + s.meters.warmth) / 3;
+  return avg >= lock.foundationMeters && s.inflammation <= lock.foundationInflammation;
+}
+
 export function stepMeters(s: GameState, dt: number, now: number): void {
   // 압력을 먼저 모아 동시에 적용 (미터 간 상호참조 시 순서 편향 방지)
   const deltas: Record<MeterKey, number> = { gut: 0, water: 0, warmth: 0, mind: 0 };
   for (const key of METER_KEYS) deltas[key] = meterPressure(s, key, now) * dt;
   for (const key of METER_KEYS) s.meters[key] = clampMeter(s.meters[key] + deltas[key]);
+
+  // 식(識) 잠금(우울): 지반이 회복되기 전엔 빛(mind)이 cap 위로 오르지 못한다.
+  // → "그냥 긍정"이 불가능. 몸(장·수·열 + 염증)을 먼저 고쳐야 마음이 열림.
+  const lock = s.encounter?.mindLock;
+  if (lock && !mindFoundationMet(s, lock)) {
+    s.meters.mind = Math.min(s.meters.mind, lock.cap);
+  }
 }
 
 export function stepInflammation(s: GameState, dt: number): void {

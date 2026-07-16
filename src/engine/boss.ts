@@ -72,6 +72,7 @@ export function startEncounter(s: GameState, boss: Boss): void {
       regeneration: boss.phases.regeneration.requires,
     },
     victory: { meters: boss.victory.meters, inflammationMax: boss.victory.inflammationMax },
+    mindLock: boss.mindLock,
   };
   s.encounter = enc;
 

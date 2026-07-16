@@ -152,6 +152,8 @@ export interface Boss {
   attackRaisesGauge?: number; // 공격(딜) 시 게이지 상승량 — 역설 보스(자가면역)
   debuffs?: Omit<Modifier, "id" | "source">[]; // 시작 시 부여되는 디버프(인슐린저항 등)
   clearReward?: Omit<Modifier, "id" | "source">; // 승리 시 부여되는 영구 '치유 지혜' 배지 (이주해도 유지)
+  // 식(識) 잠금 — 지반(장·수·열 평균, 염증)이 임계 넘기 전엔 빛(mind)에 cap. "몸을 고쳐야 마음이 열린다"(우울)
+  mindLock?: { foundationMeters: number; foundationInflammation: number; cap: number };
 }
 
 /** 보스전 페이즈 (순환→정화→재생→승리) */
@@ -181,6 +183,7 @@ export interface Encounter {
   // 페이즈 게이트식(데이터) & 승리 밴드 — 엔진이 content 없이 자체 평가
   gates: { circulation: string; purification: string; regeneration: string };
   victory: { meters: number; inflammationMax: number };
+  mindLock?: { foundationMeters: number; foundationInflammation: number; cap: number };
 }
 
 // ─────────────────────────────────────────────────────────────

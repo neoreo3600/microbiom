@@ -14,6 +14,7 @@ import { nextCost } from "../engine/actions";
 import { computeCost } from "../engine/cost";
 import { downstreamDifficulty, computeStartMeters, adjustedInflammationRegen } from "../engine/rootnode";
 import { evalGate, victoryMet } from "../engine/boss";
+import { mindFoundationMet } from "../engine/meters";
 import * as C from "../content/config";
 import { BOSSES, CHAIN_TREE, FEEDBACK_LOOPS } from "../content/bosses";
 import { HOSTS } from "../content/campaign";
@@ -239,6 +240,12 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
         <button data-action="leaveBoss">이탈</button>
       </div>
       ${bar(`${e.gaugeLabel} (${e.gaugeBehavior})${gaugeOver ? " ⚠OVERFLOW" : ""}`, Math.min(1, e.gauge), gaugeOver ? "#ef4444" : "#eab308")}
+      ${e.mindLock
+        ? (() => {
+            const open = mindFoundationMet(s, e.mindLock!);
+            return `<div class="gate ${open ? "on" : ""}">${open ? "✓ 식(識) 잠금 해제 — 이제 빛(mind)이 열린다" : `🔒 식(識) 잠금 — 빛 cap ${e.mindLock!.cap} (지반 장·수·열 평균≥${e.mindLock!.foundationMeters} && 염증≤${e.mindLock!.foundationInflammation} 필요)`}</div>`;
+          })()
+        : ""}
       <div class="gates">
         ${gateRow("순환", e.gates.circulation, evalGate(e.gates.circulation, cx))}
         ${gateRow("정화", e.gates.purification, evalGate(e.gates.purification, cx))}
