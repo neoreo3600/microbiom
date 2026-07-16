@@ -243,6 +243,103 @@ function motif(el: Element): string {
   }
 }
 
+// ── 보스 은유 형상 (질병 = 괴물이 아니라 '불균형') ────────────────
+// §0 비협상: 공포·유혈·의료 묘사 없음. 추상 '불균형 문양(sigil)'. 얼굴/생물 아님.
+//   민감 보스(우울·암·불안)엔 '꺼지지 않는 것'(빛·감시·고요한 중심)을 심어 희망 방향 고정.
+//   각 문양은 실제 게이지 거동을 반영: 당뇨=차오름, 자가면역=자기표적, 우울=회색안개+빛,
+//   암=조용한 엉킴+감시광, 지방간=쌓임, 불안=가라앉지 않는 물결.
+
+const ELEMENT_HUE: Record<Element, number> = {
+  wood: 135, fire: 16, earth: 40, metal: 200, water5: 212, ministerfire: 276,
+};
+
+// 100-box 파형 채움 (차오름 표현)
+function waveFill(level: number, fill: string, op: number): string {
+  return `<path d="M0 ${level} C 25 ${level - 6}, 55 ${level + 6}, 100 ${level - 4} L100 100 L0 100 Z" fill="${fill}" opacity="${op}"/>`;
+}
+
+function emblemInner(id: string, behavior: string | undefined, hue: number): string {
+  const p = palette(hue);
+  switch (id) {
+    case "diabetes_T2": // 차오르는 혈당 — 넘치려는 단 물결 + 결정
+      return (
+        `<defs><linearGradient id="di_g" x1="0" y1="0" x2="0" y2="1">
+           <stop offset="0%" stop-color="hsl(44 80% 62%)"/><stop offset="100%" stop-color="hsl(36 70% 42%)"/></linearGradient></defs>` +
+        waveFill(50, "url(#di_g)", 0.85) + waveFill(56, "hsl(44 75% 55%)", 0.35) +
+        `<g fill="hsl(46 85% 78%)" opacity="0.9">
+           <rect x="35" y="30" width="7" height="7" transform="rotate(45 38.5 33.5)"/>
+           <rect x="50" y="24" width="6" height="6" transform="rotate(45 53 27)"/>
+           <rect x="62" y="32" width="7" height="7" transform="rotate(45 65.5 35.5)"/>
+         </g>`
+      );
+    case "autoimmune_RA": // 아군 오사 — 안으로 향한 과열. 공격=자해
+      return (
+        glow(50, 50, 18, "hsl(6 80% 52%)", 0.35) +
+        Array.from({ length: 7 }, (_, i) => {
+          const a = (i / 7) * Math.PI * 2;
+          const x1 = 50 + Math.cos(a) * 34, y1 = 50 + Math.sin(a) * 34;
+          const x2 = 50 + Math.cos(a) * 17, y2 = 50 + Math.sin(a) * 17;
+          return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="hsl(10 78% 56%)" stroke-width="2.4" stroke-linecap="round"/>` +
+            `<circle cx="${x2.toFixed(1)}" cy="${y2.toFixed(1)}" r="2" fill="hsl(14 85% 62%)"/>`;
+        }).join("") +
+        `<circle cx="50" cy="50" r="6" fill="hsl(12 85% 58%)"/>`
+      );
+    case "depression": { // 회색 안개가 색을 덮음 — 그러나 꺼지지 않는 빛(§0 희망)
+      const fog = [30, 46, 62].map((y, i) =>
+        `<rect x="-10" y="${y}" width="120" height="12" rx="6" fill="hsl(210 12% 72%)" opacity="${0.18 - i * 0.02}"/>`
+      ).join("");
+      return (
+        glow(50, 52, 20, "hsl(42 90% 60%)", 0.45) +
+        `<circle cx="50" cy="52" r="7" fill="hsl(46 95% 66%)"/>` + // 꺼지지 않는 작은 빛
+        fog
+      );
+    }
+    case "colon_cancer": // 조용한 엉킴(그림자) + 지켜보는 감시광(관해·감시유지)
+      return (
+        `<path d="M28 66 C 20 54, 40 50, 44 60 C 48 70, 64 68, 60 56 C 56 46, 74 48, 70 62"
+           fill="none" stroke="hsl(240 8% 26%)" stroke-width="5" stroke-linecap="round" opacity="0.6"/>` +
+        glow(68, 34, 16, "hsl(190 85% 72%)", 0.5) +
+        `<circle cx="68" cy="34" r="4.5" fill="hsl(190 90% 82%)"/>` + // 감시의 빛
+        Array.from({ length: 6 }, (_, i) => {
+          const a = (i / 6) * Math.PI * 2;
+          return `<line x1="68" y1="34" x2="${(68 + Math.cos(a) * 10).toFixed(1)}" y2="${(34 + Math.sin(a) * 10).toFixed(1)}" stroke="hsl(190 85% 78%)" stroke-width="1.3" opacity="0.6"/>`;
+        }).join("")
+      );
+    case "nafld": // 쌓임·정체 — 무겁게 가라앉는 침전
+      return (
+        `<path d="M12 72 C 30 62, 40 74, 52 68 C 64 62, 78 74, 92 68 L92 92 L12 92 Z" fill="hsl(38 42% 40%)" opacity="0.8"/>` +
+        `<path d="M12 80 C 32 72, 46 84, 60 78 C 74 72, 84 82, 92 78 L92 92 L12 92 Z" fill="hsl(34 45% 30%)" opacity="0.85"/>` +
+        `<g fill="hsl(40 55% 52%)" opacity="0.85">
+           <path d="M42 40 c 5 7 5 12 0 15 c -5 -3 -5 -8 0 -15"/>
+           <path d="M60 48 c 4 6 4 10 0 12 c -4 -2 -4 -6 0 -12"/>
+         </g>`
+      );
+    case "anxiety": { // 가라앉지 않는 물결(과각성) — 그러나 고요한 중심(§0 희망)
+      const rings = [12, 20, 28, 35].map((r, i) =>
+        `<circle cx="50" cy="${50 + (i % 2 === 0 ? -1 : 1) * 1.5}" r="${r}" fill="none" stroke="hsl(212 72% 62%)" stroke-width="${(2.2 - i * 0.3).toFixed(1)}" opacity="${(0.55 - i * 0.08).toFixed(2)}"/>`
+      ).join("");
+      return rings + `<circle cx="50" cy="50" r="4" fill="hsl(200 90% 82%)"/>`;
+    }
+    default: // 미지정 — 게이지 거동 기반 폴백
+      if (behavior === "stealthGrow") return emblemInner("colon_cancer", behavior, hue);
+      return waveFill(52, p.base, 0.6);
+  }
+}
+
+/** 보스 은유 문양 SVG. 질병=불균형. element 팔레트의 링(돌보는 몸) 안에 불균형 패턴. */
+export function bossEmblem(opts: { id: string; element?: Element; behavior?: string; size?: number }): string {
+  const size = opts.size ?? 56;
+  const hue = ELEMENT_HUE[opts.element ?? "earth"];
+  const p = palette(hue);
+  const cid = `ec_${opts.id}`;
+  return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" role="img" aria-label="${opts.id} 불균형 문양" xmlns="http://www.w3.org/2000/svg">
+    <defs><clipPath id="${cid}"><circle cx="50" cy="50" r="38"/></clipPath></defs>
+    <circle cx="50" cy="50" r="40" fill="${p.base}" opacity="0.08"/>
+    <g clip-path="url(#${cid})">${emblemInner(opts.id, opts.behavior, hue)}</g>
+    <circle cx="50" cy="50" r="40" fill="none" stroke="${p.base}" stroke-width="2.5" opacity="0.5"/>
+  </svg>`;
+}
+
 /** 오행 월드 배경 SVG (보스전 무대). element 미지정 시 중립 배경. */
 export function worldBackdrop(el: Element | undefined): string {
   const key: Element = el ?? "earth";

@@ -17,7 +17,7 @@ import { HOSTS } from "../content/campaign";
 import { BOSSES } from "../content/bosses";
 import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
 import { UNITS, isRelevant } from "../content/units";
-import { unitAvatar, worldBackdrop } from "./art";
+import { unitAvatar, worldBackdrop, bossEmblem } from "./art";
 import { tasteAmount, TASTE_COST } from "../engine/taste";
 import type { InspectorActions, InspectorCtx } from "../debug/inspector";
 import { fmt } from "../debug/format";
@@ -151,9 +151,12 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
 
     return `<div class="g-boss">
       ${banner}
-      <div class="g-host">
-        <div><b>${host ? host.name : ""}</b> ${host ? `(${host.age})` : ""} <span class="g-muted">· 숙주 ${s.campaign.hostIndex + 1}/${HOSTS.length}</span></div>
-        <div class="g-muted">${e.disease} · ${worldStr}${host ? ` · "${host.bio}"` : ""}</div>
+      <div class="g-host g-hostrow">
+        <span class="g-emblem" title="${e.disease} — 되돌릴 불균형">${bossEmblem({ id: e.bossId, element: w?.element, behavior: e.gaugeBehavior, size: 52 })}</span>
+        <div class="g-hosttxt">
+          <div><b>${host ? host.name : ""}</b> ${host ? `(${host.age})` : ""} <span class="g-muted">· 숙주 ${s.campaign.hostIndex + 1}/${HOSTS.length}</span></div>
+          <div class="g-muted">${e.disease} · ${worldStr}${host ? ` · "${host.bio}"` : ""}</div>
+        </div>
       </div>
 
       <div class="g-stepper">${stepper}</div>
@@ -401,6 +404,9 @@ function injectStyles() {
   .g-sub { color:#8b96a5; margin:8px 0 20px; }
   .g-disclaimer { background:#3a2e12; border:1px solid #7c5e10; color:#fde68a; font-size:11px; border-radius:8px; padding:8px 10px; margin-bottom:10px; line-height:1.5; }
   .g-host { background:#12161c; border:1px solid #232b35; border-radius:10px; padding:10px 12px; margin-bottom:10px; }
+  .g-hostrow { display:flex; align-items:center; gap:11px; }
+  .g-hosttxt { min-width:0; padding-right:44px; }
+  .g-emblem { flex:0 0 auto; width:52px; height:52px; filter:drop-shadow(0 1px 3px rgba(0,0,0,.4)); }
   .g-host b { color:#e8eef5; font-size:15px; }
   .g-stepper { display:flex; align-items:center; justify-content:center; gap:2px; margin:12px 0; }
   .g-step { font-size:12px; padding:4px 10px; border-radius:14px; color:#5b6472; border:1px solid #232b35; }
