@@ -75,12 +75,48 @@ npm run build      # 타입검사 + 프로덕션 빌드
 아니라 **항상성 복원**(전 미터 ≥ 밴드 + 염증 낮음 + 질병 게이지 안정). 페이즈 게이트는 문자열
 (`"warmth>=0.6 && water>=0.6"`)로 기술하고 엔진(`boss.evalGate`)이 직접 평가한다.
 
-| 보스 | 아키타입 | 틀리는 직관 | 핵심 (허실 분기) |
-|---|---|---|---|
-| `diabetes_T2` (토·비위) | 과잉형 | "더 만들면 이긴다" | 차오르는 혈당 굶기기 · 온기↑(보) |
-| `autoimmune_RA` (목·간담) | 공격형 | "때리면 이긴다" | 공격=자해(게이지↑) · 국소 온기↓(사·淸熱) · Treg 관용 |
+**4대 함정 아키타입** — 나머지 40+ 질병의 템플릿. 각기 다른 "틀리는 직관"과 시그니처 기믹을 가진다.
 
-→ **같은 미터(온기), 정반대 조작 방향** = 한의학 허실(虛實) 분기가 게임 손맛으로 증명됨.
+| 보스 | 아키타입 | 틀리는 직관 | 시그니처 기믹 |
+|---|---|---|---|
+| `diabetes_T2` (토·비위) | 과잉형 | "더 만들면 이긴다" | 혈당 게이지(fill) 굶기기 · 온기↑(보) · 인슐린저항 디버프 |
+| `autoimmune_RA` (목·간담) | 공격형 | "때리면 이긴다" | 공격=자해(`attackRaisesGauge`) · 국소 온기↓(사·淸熱, `heatPolarity -1`) |
+| `depression` (금·장-뇌축) | 강요형 | "긍정 강요하면" | **식(識) 잠금**(`mindLock`) — 지반(장·수·열+염증) 회복 전엔 빛 cap |
+| `colon_cancer` (토·대장) | 은신형 | — | **연료·감시 종양**(`stealthGrow`) — 염증(연료)로 자라고 물길(NK감시)로만 억제, 배수 불가 |
+
+- **허실 분기:** 당뇨는 온기↑(보), 자가면역은 온기↓(사·淸熱) — **같은 미터, 정반대 방향**을 `heatPolarity` 하나로.
+- **식(識) 잠금:** 우울은 몸(지반)을 먼저 고쳐야 마음이 열림 → "그냥 긍정"이 규칙적으로 불가능.
+- **은신형:** 암은 "죽이기"가 아니라 환경 교정(연료 차단+감시 유지)으로 **관해**(완치 단정 아님, §0/§8 민감).
+
+**밸런스 스냅샷** (`npm run playthrough` — 올바른 순·정·재로 완주 시뮬, 회귀 가드):
+
+| 보스 | 완주(iter) | 성격 |
+|---|---|---|
+| diabetes_T2 | 14 | 교육형 |
+| depression | 14 | 식 잠금 게이팅 |
+| colon_cancer | 37 | 은신형(지속 감시) |
+| autoimmune_RA | 47 | 공격형(淸熱 후 회복, 최난) |
+
+> naive "다 눌러" 플레이는 자가면역을 못 깬다(온기 과냉각) — 허실 분기가 실제로 작동한다는 증거.
+
+### 보스/게이지 데이터 필드 레퍼런스
+
+`Boss`(`content/bosses.ts`)의 튜닝 필드 — 전부 선택(optional), 엔진 코드 변경 없이 config로:
+
+| 필드 | 뜻 |
+|---|---|
+| `gauge.behavior` | `fill`(차오름: 혈당·과활성·안개) · `drain`(빠짐) · `stealthGrow`(연료로 자라고 감시로 억제: 종양) |
+| `gauge.fill` / `stableBand` / `start` | 초당 변화량 · 승리 안정 상한 · 시작 게이지값(암=이미 존재) |
+| `heatPolarity` | 순환 시 온기 방향 `+1`(보) / `-1`(사·淸熱) — 허실 분기 |
+| `attackRaisesGauge` | 공격(딜) 시 게이지 상승량 — 역설 보스(공격=자해) |
+| `mindLock` | `{foundationMeters, foundationInflammation, cap}` — 지반 회복 전 빛(mind) 캡(우울) |
+| `debuffs[]` | 시작 시 부여되는 디버프 modifier(인슐린저항 등) |
+| `clearReward` | 승리 시 부여되는 영구 '치유 지혜' 배지(`heal:<id>`, 이주해도 유지) |
+| `archetype` | 상속 태그(예: `cancer_base`) — `makeCancer()`로 템플릿 확장 |
+
+그 밖의 M1 데이터 계층: `content/campaign.ts`(숙주·이주 루프), `content/events.ts`(숙주 날씨 이벤트),
+`content/worlds.ts`(오행 6월드). 상태에는 `meters`·`inflammation`·`detox`·`rootnode`·`encounter`·`campaign`이 추가됐고
+전부 세이브/로드 무손실이다.
 
 ## 폴더 구조 (셋은 서로 독립)
 
@@ -94,17 +130,23 @@ src/
     meters.ts      // 미터·염증·해독·게이지 연속 시뮬레이션 + 되먹임 고리
     rootnode.ts    // 뿌리노드 재건 + 만류귀종 종속 규칙 (startMeters/regen)
     boss.ts        // 인카운터 시작·페이즈 게이트 평가·항상성 승리 + 순·정·재 손길
+    events.ts      // 숙주 이벤트(날씨) 적용 — 즉시 효과 + 임시 modifier
     tick.ts        // 틱 루프: 생산 누적 · 생태계 스텝 · 페이즈 평가 · 만료 · unlock
     offline.ts     // 오프라인 적분 (cap 포함)
     prestige.ts    // 리셋 + 변환 (= 다음 사람에게 이주)
     save.ts        // 직렬화 / 역직렬화 / localStorage
   content/
     config.ts      // ★ 성장엔진 콘텐츠 (미터/뿌리노드 초기값·업그레이드·뽑기·이주 트리)
-    bosses.ts      // ★ 보스(질병) 데이터 — 여기만 고치면 새 보스가 붙는다
+    bosses.ts      // ★ 보스(질병) 데이터 — 여기만 고치면 새 보스가 붙는다 (4대 아키타입)
+    campaign.ts    // ★ 숙주(사람) 캠페인 — 이름·사연·회복 컷 + 이주 순서
+    events.ts      // ★ 숙주 일상 이벤트(날씨) 데이터 — 야식·스트레스·수면…
+    worlds.ts      // ★ 오행 6월드 (장부·감정·오미·주관 조직)
   debug/
-    inspector.ts   // 미터·뿌리노드·보스전·만류귀종·성장 대시보드 + 난이도 그래프
+    inspector.ts   // 미터·뿌리노드·보스전·미리보기·날씨·6월드·만류귀종·성장 대시보드
     format.ts      // 큰 수 포매터
   main.ts          // engine + content + inspector 조립
+scripts/
+  playthrough.ts   // `npm run playthrough` — 보스 완주 밸런스 회귀 가드
 ```
 
 ## 공통 공식 (계산 순서 고정)
