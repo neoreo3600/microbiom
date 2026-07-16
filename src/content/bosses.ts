@@ -34,6 +34,8 @@ export const DIABETES_T2: Boss = {
   paradox: undefined,
   // 인슐린 저항: 생산→세포 전환 효율 ×0.5 (재생 페이즈에서 감수성 복구로 해제)
   debuffs: [{ scope: "globalRate", target: "*", type: "mult", value: D(0.5) }],
+  // 치유 지혜(영구): 대사 균형을 되살린 경험 → 전 월드 생산 ×1.2 (이주해도 유지)
+  clearReward: { scope: "globalRate", target: "*", type: "mult", value: D(1.2) },
   phases: {
     // 순환: 온기·물길을 열어야 다음 단계 자원이 돈다
     circulation: { requires: "warmth>=0.6 && water>=0.6" },
@@ -70,6 +72,8 @@ export const AUTOIMMUNE_RA: Boss = {
   paradox: "공격=자해 (아군 오사): 딜을 버리는 게 이득",
   // 장누수 → 자가항원 유입: 숲(gut) 미터에 지속 음압력
   debuffs: [{ scope: "meter", target: "gut", type: "add", value: D(-0.01) }],
+  // 치유 지혜(영구): 장벽·면역 관용을 되살린 경험 → 숲(gut) 지속 지지 +0.004/s (이주해도 유지)
+  clearReward: { scope: "meter", target: "gut", type: "add", value: D(0.004) },
   phases: {
     // 순환: 淸熱(국소열↓) + 물길 순환↑. 열을 무작정 올리면 실패.
     circulation: { requires: "water>=0.6 && warmth<=0.45" },

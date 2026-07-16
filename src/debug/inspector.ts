@@ -148,6 +148,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       bossPanel(s),
       nextHostPreviewPanel(s),
       weatherPanel(s),
+      healCollectionPanel(s),
       growthPanel(s, now),
       boosterOfflinePanel(),
       prestigeSavePanel(s, genes),
@@ -273,6 +274,29 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
         <span class="muted">${regenWorst.toFixed(3)} →</span> <b style="color:#ef4444">${regenNow.toFixed(3)}</b>
         <span class="pg">${regenNow < regenWorst ? "↓낮을수록 유리" : ""}</span></div>
       <div class="muted">재생 손길로 뿌리를 더 키우면 시작 미터↑·염증 regen↓ → 다음 보스가 수월해진다. "장부터"가 이득.</div>`);
+  }
+
+  // ── 치유한 질병 (도감·지혜) ──
+  function healCollectionPanel(s: GameState): string {
+    const healed = BOSSES.filter((b) => s.collection.has(`boss:${b.id}`));
+    const rows = BOSSES.map((b) => {
+      const done = s.collection.has(`boss:${b.id}`);
+      const r = b.clearReward;
+      const rewardDesc = r ? `${r.scope}/${r.target} ${r.type}=${fmt(r.value)}` : "—";
+      return `<div class="li"><span class="${done ? "egood" : "muted"}">${done ? "✓" : "·"} ${b.disease}</span>
+        <span class="muted">${rewardDesc}</span></div>`;
+    }).join("");
+    const active = s.modifiers.filter((m) => m.source.startsWith("heal:"));
+    const badges = active.length
+      ? active.map((m) =>
+          `<div class="li mono"><span class="egood">🏅 ${m.source.replace("heal:", "")}</span>
+            <span class="muted">${m.scope}/${m.target ?? "*"} ${m.type}=${fmt(m.value)}</span></div>`
+        ).join("")
+      : `<span class="muted">아직 없음 — 항상성 복원 시 획득</span>`;
+    return section(`치유한 질병 (도감·지혜) ${healed.length}/${BOSSES.length}`, `
+      <div class="list">${rows}</div>
+      <div class="sub">획득한 치유 지혜 (영구 · 이주해도 유지)</div>
+      <div class="list">${badges}</div>`);
   }
 
   // ── 숙주 일상 (날씨) ──

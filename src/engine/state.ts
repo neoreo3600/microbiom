@@ -151,6 +151,7 @@ export interface Boss {
   heatPolarity?: number; // 순환 시 온기 방향: +1 보(당뇨) / -1 사·淸熱(자가면역)
   attackRaisesGauge?: number; // 공격(딜) 시 게이지 상승량 — 역설 보스(자가면역)
   debuffs?: Omit<Modifier, "id" | "source">[]; // 시작 시 부여되는 디버프(인슐린저항 등)
+  clearReward?: Omit<Modifier, "id" | "source">; // 승리 시 부여되는 영구 '치유 지혜' 배지 (이주해도 유지)
 }
 
 /** 보스전 페이즈 (순환→정화→재생→승리) */

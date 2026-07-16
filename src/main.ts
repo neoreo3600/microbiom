@@ -188,8 +188,24 @@ const inspector = createInspector(app, {
   },
 });
 
+// 승리 감지 → 영구 '치유 지혜' 배지 materialize (Decimal은 modifiers 직렬화가 처리)
+function grantClearReward() {
+  const e = state.encounter;
+  if (!e || e.phase !== "won") return;
+  const src = `heal:${e.bossId}`;
+  if (state.modifiers.some((m) => m.source === src)) return; // 이미 부여됨
+  const boss = BOSSES.find((b) => b.id === e.bossId);
+  if (boss?.clearReward) {
+    state.modifiers.push({ ...boss.clearReward, id: src, source: src });
+    console.log(`[heal] ${e.bossId} 치유 지혜 배지 획득`);
+  }
+}
+
 // ── 루프 ───────────────────────────────────────────────────────
-setInterval(() => tick(state, Date.now()), 100); // 생산 틱
+setInterval(() => {
+  tick(state, Date.now());
+  grantClearReward();
+}, 100); // 생산 틱 + 승리 보상
 setInterval(() => inspector.render(), 200); // 화면 갱신
 setInterval(() => inspector.tickGraph(), 1000); // 그래프 샘플
 setInterval(() => {
