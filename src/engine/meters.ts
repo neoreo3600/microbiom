@@ -140,6 +140,42 @@ export function stepGauge(s: GameState, dt: number): void {
   if (e.gauge < 0) e.gauge = 0;
 }
 
+/** 되먹임 고리 상태 (시각화용) */
+export interface FeedbackLoopState {
+  id: string;
+  desc: string;
+  intensity: number; // 0..1 (얼마나 세게 돌고 있는가)
+  active: boolean; // 임계 이상이면 "돌아가는 중"
+  cut: string; // 어디서 끊을지
+}
+
+export const FEEDBACK_ACTIVE_THRESHOLD = 0.4;
+
+/**
+ * 지금 돌고 있는 악순환 고리들. engine 동역학(gutBrain·cortisol·염증)을 그대로 반영.
+ * "고리를 어디서 끊을지"가 보이게 — 뿌리(장·염증)에서 끊는 게 가장 효율적임을 체감.
+ */
+export function feedbackLoops(s: GameState): FeedbackLoopState[] {
+  const gutBrain = clampMeter(((1 - s.meters.gut) + (1 - s.meters.mind)) / 2);
+  const inflaLoop = clampMeter(s.inflammation);
+  return [
+    {
+      id: "장-뇌축",
+      desc: "장↓→세로토닌↓→빛↓→코르티솔↑→염증↑→장↓",
+      intensity: gutBrain,
+      active: gutBrain > FEEDBACK_ACTIVE_THRESHOLD,
+      cut: "장(재생)·빛에서 끊기",
+    },
+    {
+      id: "염증-인슐린",
+      desc: "염증→대사교란·인슐린저항→염증↑",
+      intensity: inflaLoop,
+      active: inflaLoop > FEEDBACK_ACTIVE_THRESHOLD,
+      cut: "염증(정화)에서 끊기",
+    },
+  ];
+}
+
 /** 한 스텝의 전체 생태계 시뮬레이션 (tick 에서 호출) */
 export function stepEcosystem(s: GameState, dt: number, now: number): void {
   stepInflammation(s, dt);

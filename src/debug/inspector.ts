@@ -14,9 +14,9 @@ import { nextCost, unitCount } from "../engine/actions";
 import { computeCost } from "../engine/cost";
 import { downstreamDifficulty, computeStartMeters, adjustedInflammationRegen } from "../engine/rootnode";
 import { evalGate, victoryMet } from "../engine/boss";
-import { mindFoundationMet } from "../engine/meters";
+import { mindFoundationMet, feedbackLoops } from "../engine/meters";
 import * as C from "../content/config";
-import { BOSSES, CHAIN_TREE, FEEDBACK_LOOPS } from "../content/bosses";
+import { BOSSES, CHAIN_TREE } from "../content/bosses";
 import { HOSTS } from "../content/campaign";
 import { HOST_EVENTS, eventsForBoss } from "../content/events";
 import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
@@ -162,7 +162,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       boosterOfflinePanel(),
       prestigeSavePanel(s, genes),
       worldsPanel(s),
-      chainTreePanel(),
+      chainTreePanel(s),
       modifiersPanel(s, now),
     ].join("");
 
@@ -449,14 +449,24 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       <div class="list">${rows}</div>`);
   }
 
-  function chainTreePanel(): string {
+  function chainTreePanel(s: GameState): string {
     const branches = CHAIN_TREE.branches
       .map((b) => `<div class="chain"><b>${b.gate}</b> → ${b.diseases.join(", ")}</div>`).join("");
+    const loops = feedbackLoops(s).map((l) => {
+      const pct = (l.intensity * 100).toFixed(0);
+      const color = l.active ? "#ef4444" : "#3f6212";
+      return `<div class="loop">
+        <div class="loop-head">${l.active ? "🔴 돌아가는 중" : "⚪ 정지"} · <b>${l.id}</b>
+          <span class="muted"> — ${l.active ? l.cut : "안정"}</span></div>
+        <div class="bt"><div class="bf" style="width:${pct}%;background:${color}"></div></div>
+        <div class="muted">${l.desc} · 강도 ${l.intensity.toFixed(2)}</div>
+      </div>`;
+    }).join("");
     return section("만류귀종 트리 (연쇄·되먹임)", `
       <div class="chain root">${CHAIN_TREE.root} (뿌리) ↓</div>
       ${branches}
-      <div class="sub">되먹임 고리</div>
-      ${FEEDBACK_LOOPS.map((l) => `<div class="muted">🔁 ${l}</div>`).join("")}`);
+      <div class="sub">되먹임 고리 (실시간 — 고리를 어디서 끊을까)</div>
+      ${loops}`);
   }
 
   function modifiersPanel(s: GameState, now: number): string {
@@ -578,6 +588,10 @@ function injectStyles() {
   .li-main .r-epic { color:#c084fc; } .li-main .r-legendary { color:#fbbf24; }
   .chain { font-size:11px; padding:2px 0; color:#cbd5e1; }
   .chain.root { color:#22d3ee; font-weight:600; }
+  .loop { margin:5px 0; padding:4px 0; border-top:1px solid #1c1c1c; }
+  .loop-head { font-size:12px; }
+  .loop .bt { height:8px; background:#0f0f11; border:1px solid #222; border-radius:4px; overflow:hidden; margin:3px 0; }
+  .loop .bf { height:100%; transition:width .2s; }
   `;
   const style = document.createElement("style");
   style.textContent = css;
