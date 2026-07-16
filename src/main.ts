@@ -14,6 +14,7 @@ import {
 } from "./engine/actions";
 import {
   circulate,
+  crisisSupport,
   endEncounter,
   forceAttack,
   purify,
@@ -107,7 +108,12 @@ const inspector = createInspector(app, {
       drawMutation(state, C.MUTATIONS, Math.random());
     },
     drawHero() {
-      drawUnit(state, UNITS, Math.random());
+      // gacha 광고 지점: 웹=스텁(즉시), 네이티브=AdMob 리워드
+      getAdService()
+        .showRewarded("gacha")
+        .then((r) => {
+          if (r.rewarded) drawUnit(state, UNITS, Math.random());
+        });
     },
     prestige() {
       doPrestige(state, C.PRESTIGE, C.initialSnapshot());
@@ -199,6 +205,22 @@ const inspector = createInspector(app, {
     },
     attack() {
       forceAttack(state);
+    },
+    crisis() {
+      // 위기 지원군 광고 지점: 게이지 크게↓ + 염증 진정
+      getAdService()
+        .showRewarded("crisis")
+        .then((r) => {
+          if (r.rewarded) crisisSupport(state);
+        });
+    },
+    meditation() {
+      // 파장/명상 부스터 광고 지점: 빛(mind) 지속 지지 임시 modifier
+      getAdService()
+        .showRewarded("meditation")
+        .then((r) => {
+          if (r.rewarded) activateBooster(state, C.MEDITATION_BOOSTER, Date.now());
+        });
     },
     hostEvent(id) {
       const ev = HOST_EVENTS.find((e) => e.id === id);

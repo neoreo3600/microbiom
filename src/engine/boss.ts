@@ -201,3 +201,11 @@ export function forceAttack(s: GameState): void {
   if (!e) return;
   if (e.attackRaisesGauge > 0) e.gauge += e.attackRaisesGauge;
 }
+
+/** 위기 지원군(리워드 광고): 질병 게이지를 크게 내리고 염증을 진정 */
+export function crisisSupport(s: GameState): void {
+  const e = s.encounter;
+  if (!e) return;
+  e.gauge = Math.max(0, e.gauge - 0.3);
+  s.inflammation = clampMeter(s.inflammation - 0.1);
+}

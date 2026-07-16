@@ -46,6 +46,8 @@ export interface InspectorActions {
   purify(): void;
   regenerate(): void;
   attack(): void;
+  crisis(): void;
+  meditation(): void;
   migrate(): void;
   hostEvent(id: string): void;
   useTaste(): void;
@@ -120,6 +122,8 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       case "purify": a.purify(); break;
       case "regenerate": a.regenerate(); break;
       case "attack": a.attack(); break;
+      case "crisis": a.crisis(); break;
+      case "meditation": a.meditation(); break;
       case "migrate": a.migrate(); break;
       case "hostEvent": logEvent(id!); a.hostEvent(id!); break;
       case "useTaste": a.useTaste(); break;
@@ -283,6 +287,11 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
         <button data-action="regenerate">재생 (숲·빛·뿌리)</button>
         <button data-action="attack" class="${e.attackRaisesGauge > 0 ? "danger" : ""}">공격/딜${e.attackRaisesGauge > 0 ? " ⚠자해" : ""}</button>
       </div>
+      <div class="sub">리워드 광고 지점 (🎬 = 광고 후 보상)</div>
+      <div class="row wrap">
+        <button data-action="crisis">🎬 위기 지원군 (게이지↓·염증↓)</button>
+        <button data-action="meditation">🎬 명상 부스터 (빛↑)</button>
+      </div>
       ${(() => {
         const amt = tasteAmount(s, e.taste);
         const canUse = amt >= TASTE_COST;
@@ -337,7 +346,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
           <span class="muted">${eff}</span></div>`;
       }).join("");
     return section(`히어로 유닛 (로스터 ${owned}/${UNITS.length})`, `
-      <div class="row"><button data-action="drawHero">🦠 히어로 뽑기</button>
+      <div class="row"><button data-action="drawHero">🎬 히어로 뽑기 (광고)</button>
         <span class="muted">★ = 현재 보스에 특히 유효 · 배치 수만큼 스택 · 이주해도 유지</span></div>
       <div class="list">${rows}</div>`);
   }

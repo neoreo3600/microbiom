@@ -157,6 +157,14 @@ export const BOOSTERS: BoosterDef[] = [
 // ─────────────────────────────────────────────────────────────
 // 오프라인 광고 ×N 스텁 — offlinePayout scope 임시 modifier
 // ─────────────────────────────────────────────────────────────
+// 파장/명상 부스터 (리워드 광고) — 빛(mind) 지속 지지 임시 modifier
+export const MEDITATION_BOOSTER = {
+  id: "meditation",
+  label: "명상(빛↑ 90s)",
+  durationSec: 90,
+  grants: { scope: "meter", target: "mind", type: "add", value: D(0.02) } as Omit<Modifier, "id" | "source">,
+};
+
 export const OFFLINE_CAP_SEC = 4 * 3600; // 오프라인 보상 상한 4시간
 export const OFFLINE_AD = {
   id: "offlineAd",
