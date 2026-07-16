@@ -22,6 +22,7 @@ import { HOST_EVENTS, eventsForBoss } from "../content/events";
 import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
 import { UNITS, isRelevant } from "../content/units";
 import { tasteAmount, TASTE_COST } from "../engine/taste";
+import { adPlatformLabel } from "../platform/ads";
 import { fmt, fmtRate, fmtRemain, fmtDuration } from "./format";
 
 export interface InspectorActions {
@@ -418,7 +419,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
   }
 
   function boosterOfflinePanel(): string {
-    return section("부스터 / 오프라인 (광고 스텁)", `
+    return section(`부스터 / 오프라인 (리워드 광고: ${adPlatformLabel()})`, `
       <div class="row wrap">
         ${C.BOOSTERS.map((b) => `<button data-action="booster" data-id="${b.id}">${b.label}</button>`).join("")}
       </div>

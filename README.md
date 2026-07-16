@@ -125,7 +125,24 @@ npm run build      # 타입검사 + 프로덕션 빌드
 - **생태계:** 미터4·염증·해독·뿌리노드 · 만류귀종 종속(뿌리 재건→하류 완화) · 되먹임 고리 실시간 시각화 · 트리맵
 - **콘텐츠:** 오행 6월드 · 오미(五味) 자원 경제 · 히어로 유닛 로스터 · 숙주 날씨 이벤트
 - **윤리:** §0 프레이밍 상시 디스클레이머 + 민감 보스(우울·암) 강조 배너
-- **다음(M4, 결정 대기):** Unity 이식 vs 웹+Capacitor 하이브리드 → 리워드 광고 SDK
+- **M4(진행 중):** 웹+Capacitor 하이브리드 셸 + 리워드 광고 추상화(웹=스텁 / 네이티브=AdMob)
+
+## 모바일 빌드 (Capacitor + AdMob)
+
+엔진이 순수 TS라 **웹 플레이는 지금 그대로 되고**, 네이티브 껍데기(Capacitor)만 씌우면 AdMob 리워드 광고가 붙는다.
+광고는 `src/platform/ads.ts` 추상화 뒤에 있어, 웹에선 스텁(즉시 보상)·네이티브에선 AdMob 으로 **자동 전환**된다.
+
+```bash
+# 네이티브(Android) 준비 — Android Studio 필요
+npm i @capacitor-community/admob      # 광고 플러그인 (네이티브에서만 로드됨)
+npx cap add android                   # android/ 네이티브 프로젝트 생성 (gitignore됨)
+npm run cap:sync                      # 웹 빌드(dist) → 네이티브로 동기화
+npx cap open android                  # Android Studio 에서 빌드·실행
+```
+
+- **광고 단위 ID:** `src/platform/ads.ts` 의 `TEST_REWARDED_AD_ID`(Google 공식 테스트 ID)를 실제 AdMob ID 로 교체하고, AndroidManifest 에 AdMob 앱 ID 를 추가한다.
+- **리워드 지점(§9):** `AdPlacement` = `offlineBoost`/`booster`/`gacha`/`crisis`/`meditation`. 현재 부스터·오프라인 ×N 버튼이 광고 게이트를 통과한다.
+- **개발 중 실기기 라이브 리로드:** `capacitor.config.ts` 의 `server.url` 을 dev 서버로 켜면 된다.
 
 ## 폴더 구조 (셋은 서로 독립)
 

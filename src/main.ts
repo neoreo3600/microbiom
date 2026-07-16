@@ -23,6 +23,7 @@ import {
 import { applyEvent } from "./engine/events";
 import { spendTaste } from "./engine/taste";
 import { tasteEffect } from "./content/worlds";
+import { getAdService, initAds } from "./platform/ads";
 import { BOSSES } from "./content/bosses";
 import { HOSTS } from "./content/campaign";
 import { HOST_EVENTS } from "./content/events";
@@ -114,15 +115,26 @@ const inspector = createInspector(app, {
     },
     booster(id) {
       const b = C.BOOSTERS.find((x) => x.id === id);
-      if (b) activateBooster(state, b, Date.now());
+      if (!b) return;
+      // 리워드 광고 게이트: 웹=스텁(즉시), 네이티브=AdMob 리워드 광고 후 보상
+      getAdService()
+        .showRewarded("booster")
+        .then((r) => {
+          if (r.rewarded) activateBooster(state, b, Date.now());
+        });
     },
     offlineAd() {
-      // offlinePayout scope 임시 modifier 를 얹는다 → 다음 스킵 보상 ×N
-      activateBooster(
-        state,
-        { id: C.OFFLINE_AD.id, grants: C.OFFLINE_AD.grants, durationSec: C.OFFLINE_AD.durationSec },
-        Date.now()
-      );
+      getAdService()
+        .showRewarded("offlineBoost")
+        .then((r) => {
+          if (!r.rewarded) return;
+          // offlinePayout scope 임시 modifier 를 얹는다 → 다음 스킵 보상 ×N
+          activateBooster(
+            state,
+            { id: C.OFFLINE_AD.id, grants: C.OFFLINE_AD.grants, durationSec: C.OFFLINE_AD.durationSec },
+            Date.now()
+          );
+        });
     },
     skip(hours) {
       const now = Date.now();
@@ -211,6 +223,9 @@ function grantClearReward() {
     console.log(`[heal] ${e.bossId} 치유 지혜 배지 획득`);
   }
 }
+
+// 리워드 광고 초기화 (네이티브에서 AdMob init, 웹은 no-op)
+initAds();
 
 // ── 루프 ───────────────────────────────────────────────────────
 setInterval(() => {
