@@ -1,0 +1,20 @@
+{
+  "name": "idle-growth-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "방치형 성장엔진 코어 — 5개 프리미티브(Resource/Generator/Modifier/CostCurve/Prestige)로 환원된 데이터 주도 엔진",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "break_infinity.js": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0"
+  }
+}
