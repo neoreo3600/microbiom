@@ -463,6 +463,42 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       <div class="list">${rows}</div>`);
   }
 
+  // 값(0..1) → 적→황→녹 히트 색
+  function heat(v: number): string {
+    const c = clampMeter(v);
+    const r = Math.round(230 * (1 - c) + 20);
+    const g = Math.round(200 * c + 30);
+    return `rgb(${r},${g},60)`;
+  }
+
+  // 뿌리→4관문→월드→증상 라이브 트리맵
+  function treeMap(s: GameState): string {
+    const curWorld = s.encounter?.world;
+    const curBoss = s.encounter?.bossId;
+    const root = `<span class="tm-node" style="background:${heat(s.rootnode.diversity)}">🦠 뿌리 ${s.rootnode.diversity.toFixed(2)}</span>`;
+    const gates = (Object.keys(METER_META) as MeterKey[])
+      .map((k) => `<span class="tm-node" style="background:${heat(s.meters[k])}">${METER_META[k].label.split("(")[0]} ${s.meters[k].toFixed(2)}</span>`)
+      .join("");
+    const worlds = WORLDS
+      .map((w) => `<span class="tm-cell ${w.id === curWorld ? "on" : ""}">${ELEMENT_LABEL[w.element].charAt(0)}·${w.organ}</span>`)
+      .join("");
+    const symptoms = BOSSES
+      .map((b) => {
+        const healed = s.collection.has(`boss:${b.id}`);
+        const cls = b.id === curBoss ? "on" : healed ? "done" : "";
+        return `<span class="tm-cell ${cls}">${healed ? "✓" : ""}${b.disease}</span>`;
+      })
+      .join("");
+    return `
+      <div class="tm-row">${root}</div>
+      <div class="tm-arrow">↓ 4출력 배급</div>
+      <div class="tm-row">${gates}</div>
+      <div class="tm-arrow">↓ 불균형이 장부색으로</div>
+      <div class="tm-row">${worlds}</div>
+      <div class="tm-arrow">↓ 하류 증상</div>
+      <div class="tm-row">${symptoms}</div>`;
+  }
+
   function chainTreePanel(s: GameState): string {
     const branches = CHAIN_TREE.branches
       .map((b) => `<div class="chain"><b>${b.gate}</b> → ${b.diseases.join(", ")}</div>`).join("");
@@ -476,8 +512,9 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
         <div class="muted">${l.desc} · 강도 ${l.intensity.toFixed(2)}</div>
       </div>`;
     }).join("");
-    return section("만류귀종 트리 (연쇄·되먹임)", `
-      <div class="chain root">${CHAIN_TREE.root} (뿌리) ↓</div>
+    return section("만류귀종 트리맵 (연쇄·되먹임)", `
+      ${treeMap(s)}
+      <div class="sub">연쇄 참고 (구현된 4보스 너머의 하류)</div>
       ${branches}
       <div class="sub">되먹임 고리 (실시간 — 고리를 어디서 끊을까)</div>
       ${loops}`);
@@ -613,6 +650,12 @@ function injectStyles() {
   .loop-head { font-size:12px; }
   .loop .bt { height:8px; background:#0f0f11; border:1px solid #222; border-radius:4px; overflow:hidden; margin:3px 0; }
   .loop .bf { height:100%; transition:width .2s; }
+  .tm-row { display:flex; flex-wrap:wrap; gap:4px; justify-content:center; margin:2px 0; }
+  .tm-arrow { text-align:center; color:#666; font-size:10px; margin:1px 0; }
+  .tm-node { font-size:10px; padding:2px 7px; border-radius:10px; color:#0a0a0a; font-weight:600; }
+  .tm-cell { font-size:10px; padding:2px 6px; border-radius:4px; border:1px solid #2a2a2a; color:#777; }
+  .tm-cell.on { border-color:#4ade80; color:#dcfce7; background:#14532d; font-weight:600; }
+  .tm-cell.done { color:#86efac; border-color:#166534; }
   `;
   const style = document.createElement("style");
   style.textContent = css;
