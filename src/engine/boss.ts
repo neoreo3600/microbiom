@@ -20,14 +20,15 @@ import {
 } from "./rootnode";
 
 // 순·정·재 손길의 한 번 클릭당 변화량 (튜닝)
+// C 밸런스 패스: 초반 보스가 너무 빨리 끝나지 않도록 소폭 하향. 어려운 보스 winnability 유지.
 export const HEAL_TUNING = {
-  circulateWater: 0.06,
-  circulateWarmth: 0.06,
-  purifyInflammation: 0.1,
-  purifyGauge: 0.1,
-  purifyDetox: 0.08,
-  regenGut: 0.06,
-  regenMind: 0.04,
+  circulateWater: 0.05,
+  circulateWarmth: 0.05,
+  purifyInflammation: 0.08,
+  purifyGauge: 0.08,
+  purifyDetox: 0.06,
+  regenGut: 0.05,
+  regenMind: 0.035,
   regenRoot: 0.02,
 };
 

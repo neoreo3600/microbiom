@@ -4,7 +4,7 @@
 
 import Decimal from "break_infinity.js";
 import { offlineMultiplier, resourceRate } from "./modifiers";
-import { TASTE_ACCRUE_RATE } from "./taste";
+import { TASTE_ACCRUE_RATE, OFFLINE_TASTE_FACTOR } from "./taste";
 import { addBalance, addLifetime, type GameState } from "./state";
 
 export interface OfflineReport {
@@ -44,7 +44,7 @@ export function claimOffline(
   const taste = s.encounter?.taste;
   if (taste) {
     const mult = offlineMultiplier(s, taste, now).toNumber();
-    const amount = cappedSec * TASTE_ACCRUE_RATE * mult;
+    const amount = cappedSec * TASTE_ACCRUE_RATE * OFFLINE_TASTE_FACTOR * mult;
     if (amount > 0) {
       s.tasteResources[taste] = (s.tasteResources[taste] ?? 0) + amount;
       report.tasteAccrued = { id: taste, amount };

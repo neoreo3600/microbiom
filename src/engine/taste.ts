@@ -11,8 +11,9 @@ export interface TasteEffect {
   detox?: number;
 }
 
-export const TASTE_ACCRUE_RATE = 0.08; // 초당 오미 축적 (보스전 중)
+export const TASTE_ACCRUE_RATE = 0.04; // 초당 오미 축적 (보스전 중). ~25s당 1회분 → 사용 간격이 의미있게
 export const TASTE_COST = 1.0; // 1회 사용 비용
+export const OFFLINE_TASTE_FACTOR = 0.15; // 오프라인 오미 감쇠 (능동 플레이 대비 저효율)
 
 /** 보스전 중 현재 월드의 오미를 축적 (tick 에서 호출) */
 export function accrueTaste(s: GameState, dt: number): void {
