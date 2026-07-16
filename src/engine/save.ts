@@ -71,6 +71,7 @@ export function serialize(s: GameState): string {
     },
     lifetime: decMap(s.lifetime),
     encounter: s.encounter, // 전부 number/string → JSON 직접 직렬화
+    campaign: s.campaign,
     lastSeenAt: s.lastSeenAt,
   };
   return JSON.stringify(data);
@@ -146,6 +147,7 @@ export function deserialize(
     },
     lifetime: strMap(d.lifetime ?? {}),
     encounter: d.encounter ?? undefined,
+    campaign: { hostIndex: d.campaign?.hostIndex ?? 0 },
     lastSeenAt: d.lastSeenAt ?? Date.now(),
   };
 }

@@ -197,6 +197,7 @@ export interface GameState {
   prestige: { migrations: number; genes: Record<string, Decimal> }; // 이주 횟수 + 영구 통화
   lifetime: Record<string, Decimal>; // 누적 통계 (환생 변환식 입력)
   encounter?: Encounter; // 현재 보스전 진행 상태 (없으면 자유 성장 모드)
+  campaign: { hostIndex: number }; // 현재 돌보는 숙주 인덱스 (이주 루프)
   lastSeenAt: number;
 }
 

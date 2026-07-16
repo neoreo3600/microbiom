@@ -248,14 +248,20 @@ export function createInitialState(now: number): GameState {
     inflammation: 0,
     detox: 0,
     // 뿌리노드(마이크로바이옴) — diversity 가 내구도. 초반은 취약한 숙주라 낮게 출발.
-    rootnode: {
-      diversity: 0.3,
-      outputs: { immune: 0.3, neuro: 0.3, scfa: 0.3, detox: 0.3 },
-    },
+    rootnode: initialRootnode(),
     collection: new Set<string>(),
     prestige: { migrations: 0, genes: {} },
     lifetime: {},
+    campaign: { hostIndex: 0 },
     lastSeenAt: now,
+  };
+}
+
+/** 새 숙주(새 몸)의 초기 뿌리노드. 이주 시 몸은 새것이라 뿌리노드는 리셋된다(지혜=genes만 계승). */
+export function initialRootnode() {
+  return {
+    diversity: 0.3,
+    outputs: { immune: 0.3, neuro: 0.3, scfa: 0.3, detox: 0.3 },
   };
 }
 

@@ -16,6 +16,7 @@ import { downstreamDifficulty } from "../engine/rootnode";
 import { evalGate, victoryMet } from "../engine/boss";
 import * as C from "../content/config";
 import { BOSSES, CHAIN_TREE, FEEDBACK_LOOPS } from "../content/bosses";
+import { HOSTS } from "../content/campaign";
 import { fmt, fmtRate, fmtRemain, fmtDuration } from "./format";
 
 export interface InspectorActions {
@@ -38,6 +39,7 @@ export interface InspectorActions {
   purify(): void;
   regenerate(): void;
   attack(): void;
+  migrate(): void;
 }
 
 export interface InspectorCtx {
@@ -101,6 +103,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       case "purify": a.purify(); break;
       case "regenerate": a.regenerate(); break;
       case "attack": a.attack(); break;
+      case "migrate": a.migrate(); break;
     }
     render();
   });
@@ -166,12 +169,19 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
 
   // ── 보스전 ──
   function bossPanel(s: GameState): string {
+    const host = HOSTS[s.campaign.hostIndex];
+    const progress = `숙주 ${s.campaign.hostIndex + 1}/${HOSTS.length}`;
+    const hostCard = host
+      ? `<div class="host"><b>${host.name}</b> (${host.age}) · <span class="muted">${progress}</span><div class="muted">${host.bio}</div></div>`
+      : "";
+
     const picker = BOSSES.map((b) =>
-      `<button data-action="startBoss" data-id="${b.id}">${b.disease} 시작</button>`
+      `<button data-action="startBoss" data-id="${b.id}">${b.disease} 시작(debug)</button>`
     ).join("");
 
     if (!s.encounter) {
       return section("보스전 (질병)", `
+        ${hostCard}
         <div class="row wrap">${picker}</div>
         <div class="muted">보스를 시작하면 그 질병의 미터 벡터로 상태가 세팅됩니다. (뿌리노드가 튼튼할수록 덜 무너진 채 시작 — 만류귀종)</div>`);
     }
@@ -183,7 +193,18 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
     const won = e.phase === "won";
     const gaugeOver = e.gauge > 1;
 
+    const nextHost = HOSTS[s.campaign.hostIndex + 1];
+    const winBlock = won
+      ? `<div class="win">🟢 항상성 복원 — ${host ? host.name : ""}: "${host?.recoveryCut ?? ""}"
+           <div class="muted">재발저항 ${e.relapseResist.toFixed(2)} (뿌리 다양성 계승)</div>
+           ${nextHost
+             ? `<button data-action="migrate">이주 → ${nextHost.name} (${nextHost.boss.disease})</button>`
+             : `<span class="muted">모든 숙주 완료 — 캠페인 클리어</span>`}
+         </div>`
+      : "";
+
     return section(`보스전 — ${e.disease} <span class="muted">[${e.world}] 감정:${e.emotion}</span>`, `
+      ${hostCard}
       <div class="row wrap">
         <span class="phase">${PHASE_LABEL[e.phase]}</span>
         ${e.paradox ? `<span class="paradox">역설: ${e.paradox}</span>` : ""}
@@ -202,7 +223,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
         <button data-action="regenerate">재생 (숲·빛·뿌리)</button>
         <button data-action="attack" class="${e.attackRaisesGauge > 0 ? "danger" : ""}">공격/딜${e.attackRaisesGauge > 0 ? " ⚠자해" : ""}</button>
       </div>
-      ${won ? `<div class="win">🟢 항상성 복원 — 재발저항 ${e.relapseResist.toFixed(2)} (뿌리 다양성)</div>` : ""}`);
+      ${winBlock}`);
   }
 
   // ── 성장엔진 (생산: 진화/업그레이드/뽑기/genes 트리) ──
@@ -250,14 +271,20 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
 
   function prestigeSavePanel(s: GameState, genes: Decimal): string {
     const gain = C.PRESTIGE.gainFormula(s);
+    const won = s.encounter?.phase === "won";
+    const nextHost = HOSTS[s.campaign.hostIndex + 1];
+    const migrateHint = won
+      ? (nextHost ? `클리어! 이주 시 <b>${fmt(gain)}</b> genes 계승 → ${nextHost.name}` : "모든 숙주 완료")
+      : `이주는 <b>현재 숙주 항상성 복원(승리)</b> 후 가능 · 계승 예정 genes ${fmt(gain)}`;
     return section("이주 (프레스티지) / 세이브", `
-      <div class="row"><span>다음 이주 획득 genes: <b>${fmt(gain)}</b> = floor(√(lifetimeEP/1e6))</span></div>
+      <div class="row"><span class="muted">${migrateHint}</span></div>
       <div class="row wrap">
-        <button data-action="prestige" ${gain.gt(0) ? "" : "disabled"}>다음 사람에게 이주</button>
+        <button data-action="migrate" ${won && nextHost ? "" : "disabled"}>이주 → 다음 숙주</button>
         <button data-action="save">세이브</button>
         <button data-action="load">로드</button>
         <button data-action="reset" class="danger">하드 리셋</button>
-      </div>`);
+      </div>
+      <div class="muted">이주 = 지혜(genes·도감) 계승 + 몸(EP·생산·뿌리노드) 리셋. 이주 ${s.prestige.migrations}회</div>`);
   }
 
   function chainTreePanel(): string {
@@ -376,6 +403,9 @@ function injectStyles() {
   .gate { font-size:11px; padding:2px 0; color:#888; }
   .gate.on { color:#4ade80; }
   .win { margin-top:8px; color:#4ade80; font-weight:600; }
+  .win button { margin-top:6px; background:#14532d; border-color:#166534; color:#dcfce7; }
+  .host { background:#0f0f11; border:1px solid #222; border-radius:4px; padding:6px 8px; margin-bottom:6px; font-size:12px; }
+  .host b { color:#f5f5f5; }
   .chain { font-size:11px; padding:2px 0; color:#cbd5e1; }
   .chain.root { color:#22d3ee; font-weight:600; }
   `;

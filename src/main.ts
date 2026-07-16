@@ -20,6 +20,7 @@ import {
   startEncounter,
 } from "./engine/boss";
 import { BOSSES } from "./content/bosses";
+import { HOSTS } from "./content/campaign";
 import {
   loadFromStorage,
   saveToStorage,
@@ -62,6 +63,14 @@ syncLevels(state);
   }
   state.lastSeenAt = now;
 }
+
+// 캠페인: 진행 중인 인카운터가 없으면 현재 숙주의 보스를 시작
+function ensureHostEncounter() {
+  if (state.encounter) return;
+  const host = HOSTS[state.campaign.hostIndex];
+  if (host) startEncounter(state, host.boss);
+}
+ensureHostEncounter();
 
 // ── 인스펙터 ───────────────────────────────────────────────────
 const app = document.getElementById("app")!;
@@ -144,6 +153,19 @@ const inspector = createInspector(app, {
     },
     leaveBoss() {
       endEncounter(state);
+    },
+    // 이주: 현재 숙주를 클리어(항상성 복원)했을 때만 다음 사람에게로.
+    //   지혜(genes·도감)는 계승, 몸(EP·생산·뿌리노드)은 새것으로 리셋.
+    migrate() {
+      if (state.encounter?.phase !== "won") return;
+      const next = state.campaign.hostIndex + 1;
+      if (next >= HOSTS.length) return; // 마지막 숙주 — 더 이상 이주할 곳 없음
+      doPrestige(state, C.PRESTIGE, C.initialSnapshot()); // genes 획득 + 몸 리셋
+      syncLevels(state);
+      state.rootnode = C.initialRootnode(); // 새 몸 = 새 마이크로바이옴
+      state.campaign.hostIndex = next;
+      startEncounter(state, HOSTS[next].boss);
+      console.log(`[migrate] → ${HOSTS[next].name} (${HOSTS[next].boss.disease})`);
     },
     circulate() {
       circulate(state);
