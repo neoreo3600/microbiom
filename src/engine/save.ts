@@ -63,6 +63,7 @@ export function serialize(s: GameState): string {
     meters: s.meters,
     inflammation: s.inflammation,
     detox: s.detox,
+    tasteResources: s.tasteResources,
     rootnode: s.rootnode,
     collection: Array.from(s.collection),
     prestige: {
@@ -137,6 +138,7 @@ export function deserialize(
     meters: { ...DEFAULT_METERS, ...(d.meters ?? {}) },
     inflammation: d.inflammation ?? 0,
     detox: d.detox ?? 0,
+    tasteResources: d.tasteResources ?? {},
     rootnode: d.rootnode
       ? { diversity: d.rootnode.diversity ?? 0.5, outputs: { ...DEFAULT_ROOT.outputs, ...(d.rootnode.outputs ?? {}) } }
       : DEFAULT_ROOT,

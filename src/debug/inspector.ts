@@ -19,8 +19,9 @@ import * as C from "../content/config";
 import { BOSSES, CHAIN_TREE, FEEDBACK_LOOPS } from "../content/bosses";
 import { HOSTS } from "../content/campaign";
 import { HOST_EVENTS, eventsForBoss } from "../content/events";
-import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel } from "../content/worlds";
+import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
 import { UNITS, isRelevant } from "../content/units";
+import { tasteAmount, TASTE_COST } from "../engine/taste";
 import { fmt, fmtRate, fmtRemain, fmtDuration } from "./format";
 
 export interface InspectorActions {
@@ -46,6 +47,7 @@ export interface InspectorActions {
   attack(): void;
   migrate(): void;
   hostEvent(id: string): void;
+  useTaste(): void;
 }
 
 export interface InspectorCtx {
@@ -119,6 +121,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       case "attack": a.attack(); break;
       case "migrate": a.migrate(); break;
       case "hostEvent": logEvent(id!); a.hostEvent(id!); break;
+      case "useTaste": a.useTaste(); break;
       case "randomEvent": {
         const list = eventsForBoss(ctx.getState().encounter?.bossId);
         if (list.length) {
@@ -265,6 +268,12 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
         <button data-action="regenerate">재생 (숲·빛·뿌리)</button>
         <button data-action="attack" class="${e.attackRaisesGauge > 0 ? "danger" : ""}">공격/딜${e.attackRaisesGauge > 0 ? " ⚠자해" : ""}</button>
       </div>
+      ${(() => {
+        const amt = tasteAmount(s, e.taste);
+        const canUse = amt >= TASTE_COST;
+        return `<div class="row wrap"><span class="muted">오미 ${tasteLabel(e.taste)}: <b>${amt.toFixed(2)}</b> · ${TASTE_EFFECT_DESC[e.taste] ?? "—"}</span>
+          <button data-action="useTaste" ${canUse ? "" : "disabled"}>오미 사용 (−${TASTE_COST})</button></div>`;
+      })()}
       ${winBlock}`);
   }
 

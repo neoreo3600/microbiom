@@ -4,6 +4,7 @@
 // 엔진 변경 없이 여기에 월드만 추가/수정하면 된다.
 
 import type { Element, World } from "../engine/state";
+import type { TasteEffect } from "../engine/taste";
 
 export const ELEMENT_LABEL: Record<Element, string> = {
   wood: "목(木)",
@@ -40,3 +41,27 @@ export function worldById(id: string | undefined): World | undefined {
 export function tasteLabel(taste: string): string {
   return TASTE_LABEL[taste] ?? taste;
 }
+
+// 오미 사용 시의 회복 효과 (오미별 = 오행 치유 방향). 엔진 taste.spendTaste 가 적용.
+export const TASTE_EFFECTS: Record<string, TasteEffect> = {
+  sour: { inflammation: -0.12, detox: -0.1 }, // 신맛 — 간담 해독 2상
+  bitter: { inflammation: -0.15 }, // 쓴맛 — 심 염증↓
+  sweet: { meters: { warmth: 0.1, gut: 0.06 } }, // 단맛 — 비위 에너지(좋은 단맛)
+  pungent: { meters: { water: 0.12 } }, // 매운맛 — 폐대장 발산·순환
+  salty: { meters: { water: 0.1 }, detox: -0.05 }, // 짠맛 — 신방광 수분·전해질
+  none: {}, // 상화 — 오미 없음
+};
+
+export function tasteEffect(taste: string): TasteEffect {
+  return TASTE_EFFECTS[taste] ?? {};
+}
+
+// 오미 효과 한 줄 설명 (UI)
+export const TASTE_EFFECT_DESC: Record<string, string> = {
+  sour: "염증·해독 크게↓ (간담 해독)",
+  bitter: "염증 크게↓ (심 청열)",
+  sweet: "온기·숲↑ (비위 에너지)",
+  pungent: "물길↑↑ (폐대장 발산)",
+  salty: "물길↑·해독↓ (신방광 수분)",
+  none: "—",
+};

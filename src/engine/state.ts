@@ -180,6 +180,7 @@ export interface Encounter {
   disease: string;
   world: string;
   emotion: string; // 빛(mind) 전환 대상
+  taste: string; // 이 월드의 오미(五味) 자원 id
   phase: PhaseKey;
   gauge: number; // 질병 고유 게이지 (혈당/면역과활성/색채…). overflow 는 >1
   gaugeLabel: string;
@@ -208,6 +209,7 @@ export interface GameState {
   meters: Record<MeterKey, number>; // 숲/물길/온기/빛 (0..1)
   inflammation: number; // 오염 (크로스-빌런)
   detox: number; // 해독 부담
+  tasteResources: Record<string, number>; // 오미(五味) 축적 — 월드별 회복 자원
   rootnode: RootNode; // 마이크로바이옴 뿌리노드
   collection: Set<string>; // 획득한 mutation id
   prestige: { migrations: number; genes: Record<string, Decimal> }; // 이주 횟수 + 영구 통화

@@ -259,6 +259,7 @@ export function createInitialState(now: number): GameState {
     meters: { gut: 0.5, water: 0.5, warmth: 0.5, mind: 0.5 },
     inflammation: 0,
     detox: 0,
+    tasteResources: {},
     // 뿌리노드(마이크로바이옴) — diversity 가 내구도. 초반은 취약한 숙주라 낮게 출발.
     rootnode: initialRootnode(),
     collection: new Set<string>(),

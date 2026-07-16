@@ -54,6 +54,7 @@ export function startEncounter(s: GameState, boss: Boss): void {
     disease: boss.disease,
     world: boss.world,
     emotion: boss.emotion,
+    taste: boss.tasteResource,
     phase: "circulation",
     gauge: boss.gauge?.start ?? 0,
     gaugeLabel: boss.gauge?.id ?? "게이지",
