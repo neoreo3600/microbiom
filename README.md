@@ -114,9 +114,18 @@ npm run build      # 타입검사 + 프로덕션 빌드
 | `clearReward` | 승리 시 부여되는 영구 '치유 지혜' 배지(`heal:<id>`, 이주해도 유지) |
 | `archetype` | 상속 태그(예: `cancer_base`) — `makeCancer()`로 템플릿 확장 |
 
-그 밖의 M1 데이터 계층: `content/campaign.ts`(숙주·이주 루프), `content/events.ts`(숙주 날씨 이벤트),
-`content/worlds.ts`(오행 6월드). 상태에는 `meters`·`inflammation`·`detox`·`rootnode`·`encounter`·`campaign`이 추가됐고
-전부 세이브/로드 무손실이다.
+그 밖의 데이터 계층: `content/campaign.ts`(숙주·이주 루프), `content/events.ts`(숙주 날씨), `content/worlds.ts`
+(오행 6월드+오미 효과), `content/units.ts`(히어로 유닛 로스터). 상태에는 `meters`·`inflammation`·`detox`·
+`tasteResources`·`rootnode`·`encounter`·`campaign`이 추가됐고 전부 세이브/로드 무손실이다.
+
+### 구현된 게임 루프 (P0–M3)
+
+- **성장·이주:** 5프리미티브 엔진 · 숙주 캠페인(클리어→이주→다음 숙주) · 승리 시 영구 '치유 지혜' 배지 · 리절트 카드
+- **보스:** 4대 아키타입(당뇨·자가면역·우울·암) · 순·정·재 게이팅 · 항상성 승리 · `npm run playthrough` 밸런스 가드
+- **생태계:** 미터4·염증·해독·뿌리노드 · 만류귀종 종속(뿌리 재건→하류 완화) · 되먹임 고리 실시간 시각화 · 트리맵
+- **콘텐츠:** 오행 6월드 · 오미(五味) 자원 경제 · 히어로 유닛 로스터 · 숙주 날씨 이벤트
+- **윤리:** §0 프레이밍 상시 디스클레이머 + 민감 보스(우울·암) 강조 배너
+- **다음(M4, 결정 대기):** Unity 이식 vs 웹+Capacitor 하이브리드 → 리워드 광고 SDK
 
 ## 폴더 구조 (셋은 서로 독립)
 
@@ -131,7 +140,8 @@ src/
     rootnode.ts    // 뿌리노드 재건 + 만류귀종 종속 규칙 (startMeters/regen)
     boss.ts        // 인카운터 시작·페이즈 게이트 평가·항상성 승리 + 순·정·재 손길
     events.ts      // 숙주 이벤트(날씨) 적용 — 즉시 효과 + 임시 modifier
-    tick.ts        // 틱 루프: 생산 누적 · 생태계 스텝 · 페이즈 평가 · 만료 · unlock
+    taste.ts       // 오미(五味) 자원 축적/소비 (M2)
+    tick.ts        // 틱 루프: 생산 누적 · 생태계 스텝 · 페이즈 평가 · 오미 축적 · 만료
     offline.ts     // 오프라인 적분 (cap 포함)
     prestige.ts    // 리셋 + 변환 (= 다음 사람에게 이주)
     save.ts        // 직렬화 / 역직렬화 / localStorage
@@ -140,9 +150,10 @@ src/
     bosses.ts      // ★ 보스(질병) 데이터 — 여기만 고치면 새 보스가 붙는다 (4대 아키타입)
     campaign.ts    // ★ 숙주(사람) 캠페인 — 이름·사연·회복 컷 + 이주 순서
     events.ts      // ★ 숙주 일상 이벤트(날씨) 데이터 — 야식·스트레스·수면…
-    worlds.ts      // ★ 오행 6월드 (장부·감정·오미·주관 조직)
+    worlds.ts      // ★ 오행 6월드 + 오미(五味) 효과 데이터
+    units.ts       // ★ 히어로 유닛(유익균·Treg 등) 로스터 (M2)
   debug/
-    inspector.ts   // 미터·뿌리노드·보스전·미리보기·날씨·6월드·만류귀종·성장 대시보드
+    inspector.ts   // 미터·뿌리노드·보스전·미리보기·날씨·유닛·오미·리절트·트리맵·되먹임 대시보드
     format.ts      // 큰 수 포매터
   main.ts          // engine + content + inspector 조립
 scripts/
