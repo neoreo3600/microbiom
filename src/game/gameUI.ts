@@ -68,6 +68,9 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
       case "buyUpgrade": a.buyUpgrade(id!); break;
       case "buyPermanent": a.buyPermanent(id!); break;
       case "draw": a.draw(); break;
+      case "dismissOnboard":
+        try { localStorage.setItem("soknara.onboarded", "1"); } catch { /* noop */ }
+        break;
     }
     render();
   });
@@ -174,7 +177,29 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
   function render() {
     const s = ctx.getState();
     const body = tab === "growth" ? renderGrowth(s) : tab === "roster" ? renderRoster(s) : renderBoss(s);
-    root.innerHTML = `<div class="g-screen">${body}</div>${tabBar()}`;
+    root.innerHTML = `<div class="g-screen">${body}</div>${tabBar()}${onboarding()}`;
+  }
+
+  // 첫 실행 온보딩 인트로 (1회)
+  function onboarding(): string {
+    try {
+      if (localStorage.getItem("soknara.onboarded")) return "";
+    } catch {
+      return "";
+    }
+    return `<div class="g-overlay onboard"><div class="g-intro">
+      <div class="g-title">속나라</div>
+      <p class="g-intro-lead">당신은 한 사람의 몸속 생태계를 돌보는 <b>이름 없는 손길</b>입니다.<br>
+        무너진 균형을 <b>순환·정화·재생</b>으로 되돌리세요.</p>
+      <div class="g-intro-hands">
+        <div><b class="i1">순환</b> 막힌 것을 연다 <small>물길·온기</small></div>
+        <div><b class="i2">정화</b> 쌓인 것을 비운다 <small>염증·게이지</small></div>
+        <div><b class="i3">재생</b> 생태계를 다시 키운다 <small>숲·빛·뿌리</small></div>
+      </div>
+      <p class="g-intro-disc">이 게임은 몸속 생태계를 다루는 <b>은유적 체험</b>이며 <b>의학적 조언이 아닙니다</b>.
+        실제 질병은 전문적인 진단과 치료가 필요합니다.</p>
+      <button class="g-primary" data-action="dismissOnboard">시작하기</button>
+    </div></div>`;
   }
 
   function tabBar(): string {
@@ -351,6 +376,16 @@ function injectStyles() {
   .g-unit b { color:#e8eef5; }
   .g-rel { color:#86efac; }
   .r-common { color:#9ca3af; } .r-rare { color:#60a5fa; } .r-epic { color:#c084fc; } .r-legendary { color:#fbbf24; }
+  .g-overlay.onboard { z-index:40; }
+  .g-intro { max-width:400px; width:100%; background:#0c1219; border:1px solid #232b35; border-radius:16px; padding:24px 20px; text-align:center; }
+  .g-intro .g-title { font-size:30px; letter-spacing:5px; margin-bottom:14px; }
+  .g-intro-lead { color:#cbd5e1; font-size:14px; line-height:1.7; margin:0 0 16px; }
+  .g-intro-lead b { color:#86efac; }
+  .g-intro-hands { text-align:left; background:#12161c; border:1px solid #232b35; border-radius:10px; padding:12px 14px; margin:0 0 14px; font-size:13px; color:#cbd5e1; display:flex; flex-direction:column; gap:7px; }
+  .g-intro-hands small { color:#8b96a5; }
+  .g-intro-hands .i1 { color:#38bdf8; } .g-intro-hands .i2 { color:#f87171; } .g-intro-hands .i3 { color:#4ade80; }
+  .g-intro-disc { font-size:11px; color:#fbbf24; line-height:1.6; margin:0 0 16px; }
+  .g-intro-disc b { color:#fde68a; }
   `;
   const style = document.createElement("style");
   style.textContent = css;
