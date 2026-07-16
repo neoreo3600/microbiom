@@ -4,12 +4,14 @@
 
 import Decimal from "break_infinity.js";
 import { offlineMultiplier, resourceRate } from "./modifiers";
+import { TASTE_ACCRUE_RATE } from "./taste";
 import { addBalance, addLifetime, type GameState } from "./state";
 
 export interface OfflineReport {
   elapsedSec: number;
   cappedSec: number;
   perResource: Record<string, { rate: Decimal; payout: Decimal; mult: Decimal }>;
+  tasteAccrued?: { id: string; amount: number }; // 오미 정산 (인카운터 중일 때)
 }
 
 /**
@@ -35,6 +37,18 @@ export function claimOffline(
       addLifetime(s, res.id, payout);
     }
     report.perResource[res.id] = { rate, payout, mult };
+  }
+
+  // 오미(五味) 정산 — 진행 중 인카운터의 오미를 경과시간만큼 축적 (cap·광고 배수 반영).
+  // 미터/게이지는 오프라인에 진행시키지 않는다 (보스는 능동 플레이 유지 — 자는 동안 승리 방지).
+  const taste = s.encounter?.taste;
+  if (taste) {
+    const mult = offlineMultiplier(s, taste, now).toNumber();
+    const amount = cappedSec * TASTE_ACCRUE_RATE * mult;
+    if (amount > 0) {
+      s.tasteResources[taste] = (s.tasteResources[taste] ?? 0) + amount;
+      report.tasteAccrued = { id: taste, amount };
+    }
   }
   return report;
 }
