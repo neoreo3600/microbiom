@@ -144,6 +144,8 @@ npx cap open android                  # Android Studio 에서 빌드·실행
 - **리워드 지점(§9):** `AdPlacement` = `offlineBoost`/`booster`/`gacha`/`crisis`/`meditation`. 현재 부스터·오프라인 ×N 버튼이 광고 게이트를 통과한다.
 - **개발 중 실기기 라이브 리로드:** `capacitor.config.ts` 의 `server.url` 을 dev 서버로 켜면 된다.
 
+> **iOS·릴리스 서명·스토어 심사·체크리스트 포함 전체 절차 →** [`docs/네이티브_빌드_가이드.md`](docs/네이티브_빌드_가이드.md)
+
 ## 폴더 구조 (셋은 서로 독립)
 
 ```
