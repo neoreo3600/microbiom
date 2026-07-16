@@ -246,6 +246,9 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
             return `<div class="gate ${open ? "on" : ""}">${open ? "✓ 식(識) 잠금 해제 — 이제 빛(mind)이 열린다" : `🔒 식(識) 잠금 — 빛 cap ${e.mindLock!.cap} (지반 장·수·열 평균≥${e.mindLock!.foundationMeters} && 염증≤${e.mindLock!.foundationInflammation} 필요)`}</div>`;
           })()
         : ""}
+      ${e.gaugeBehavior === "stealthGrow"
+        ? `<div class="gate ${s.meters.water >= 0.6 ? "on" : ""}">${s.meters.water >= 0.6 ? "👁 감시망 가동(은신 해제) — 연료 차단 시 종양 억제(관해)" : "🫥 은신 중 — 물길(NK 순찰)을 올려 은신을 해제하라"}</div>`
+        : ""}
       <div class="gates">
         ${gateRow("순환", e.gates.circulation, evalGate(e.gates.circulation, cx))}
         ${gateRow("정화", e.gates.purification, evalGate(e.gates.purification, cx))}

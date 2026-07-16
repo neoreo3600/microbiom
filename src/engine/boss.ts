@@ -55,7 +55,7 @@ export function startEncounter(s: GameState, boss: Boss): void {
     world: boss.world,
     emotion: boss.emotion,
     phase: "circulation",
-    gauge: 0,
+    gauge: boss.gauge?.start ?? 0,
     gaugeLabel: boss.gauge?.id ?? "게이지",
     gaugeBehavior: boss.gauge?.behavior ?? "fill",
     gaugeFill: boss.gauge?.fill ?? 0,
@@ -179,7 +179,11 @@ export function circulate(s: GameState): void {
 export function purify(s: GameState): void {
   s.inflammation = clampMeter(s.inflammation - HEAL_TUNING.purifyInflammation);
   s.detox = clampMeter(s.detox - HEAL_TUNING.purifyDetox);
-  if (s.encounter) s.encounter.gauge = Math.max(0, s.encounter.gauge - HEAL_TUNING.purifyGauge);
+  // 배수는 fill/drain 게이지(혈당·과활성·안개)에만. 종양(stealthGrow)은 직접 못 빼고
+  // 연료 차단(염증↓)+감시(물길↑)로만 억제 → 은신형 손맛 유지.
+  if (s.encounter && s.encounter.gaugeBehavior !== "stealthGrow") {
+    s.encounter.gauge = Math.max(0, s.encounter.gauge - HEAL_TUNING.purifyGauge);
+  }
 }
 
 /** 재생(생태계 복원): 숲↑, 빛↑, 뿌리노드 재건 */

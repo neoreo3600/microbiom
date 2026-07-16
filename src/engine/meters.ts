@@ -126,9 +126,16 @@ export function stepGauge(s: GameState, dt: number): void {
     case "drain":
       e.gauge = Math.max(0, e.gauge - e.gaugeFill * dt);
       break;
-    case "stealthGrow":
-      e.gauge += e.gaugeFill * 0.3 * dt; // 은신 증식(느리게)
+    case "stealthGrow": {
+      // 종양: 염증(연료)이 많을수록 성장, 물길(NK 감시)이 높을수록 억제.
+      //   → "연료 차단(염증↓) + 감시망(물길↑)"으로 굶기고 억제 = 관해. '죽이기'가 아님.
+      const fuel = s.inflammation; // 0..1
+      const surveil = s.meters.water; // 0..1 (NK 순찰)
+      const grow = e.gaugeFill * (0.3 + fuel);
+      const suppress = e.gaugeFill * surveil * 1.1; // 지속 감시가 필요하도록 억제 완만
+      e.gauge += (grow - suppress) * dt;
       break;
+    }
   }
   if (e.gauge < 0) e.gauge = 0;
 }

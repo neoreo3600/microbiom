@@ -120,7 +120,54 @@ export const DEPRESSION: Boss = {
   victory: { band: "색채복귀", meters: 0.7, inflammationMax: 0.3 },
 };
 
-export const BOSSES: Boss[] = [DIABETES_T2, AUTOIMMUNE_RA, DEPRESSION];
+// ── 보스 #4 · 암 계열 (은신형·심연) ───────────────────────────
+// "죽이기"가 아니라 환경을 교정해 굶기고 감시망을 유지(관해). 순수 판타지 은유.
+// §0/§8 민감: 완치 단정 금지, 존엄·희망 방향으로만.
+//
+// archetype 상속: CANCER_BASE 를 makeCancer()로 확장 → 장부/월드만 바꿔 재생산.
+const CANCER_BASE: Omit<Boss, "id" | "disease" | "world" | "organ" | "tasteResource"> = {
+  emotion: "생명력 이상",
+  startMeters: { gut: 0.4, water: 0.35, warmth: 0.45, mind: 0.4 },
+  detoxBurden: "high",
+  inflammation: { value: 0.6, regen: 0.05 },
+  gauge: {
+    id: "종양",
+    behavior: "stealthGrow", // 은신 증식 — 연료(염증)로 자라고 감시(물길)로 억제
+    drivers: ["unwatched", "염증연료"],
+    overflow: "전이 위협",
+    fill: 0.03,
+    stableBand: 0.35,
+    start: 0.6, // 이미 존재하는 종양 — 관해까지 능동적으로 억제해야
+  },
+  heatPolarity: 1,
+  archetype: "cancer_base",
+  paradox: "'죽이기' 아님 — 환경 교정으로 굶기고 감시망을 유지(관해)",
+  // 치유 지혜(영구): 정기(면역감시) 강화 → 전 월드 생산 ×1.25
+  clearReward: { scope: "globalRate", target: "*", type: "mult", value: D(1.25) },
+  phases: {
+    circulation: { requires: "water>=0.6" }, // 은신 해제(NK 순찰 가동)
+    purification: { requires: "inflammation<=0.35" }, // 연료 차단 + 독소 배출
+    regeneration: { requires: "gut>=0.7 && water>=0.7" }, // 감시망 + 장면역 + 정기
+  },
+  victory: { band: "관해", meters: 0.7, inflammationMax: 0.3, extra: "감시유지(완치 단정 아님)" },
+};
+
+function makeCancer(
+  over: Pick<Boss, "id" | "disease" | "world" | "organ" | "tasteResource"> & Partial<Boss>
+): Boss {
+  return { ...CANCER_BASE, ...over };
+}
+
+// 대장암 계열 — 장(월드1) 근본 직결 (토·비위대장)
+export const COLON_CANCER = makeCancer({
+  id: "colon_cancer",
+  disease: "대장암 계열",
+  world: "earth",
+  organ: "비위·대장",
+  tasteResource: "sweet",
+});
+
+export const BOSSES: Boss[] = [DIABETES_T2, AUTOIMMUNE_RA, DEPRESSION, COLON_CANCER];
 
 /** 만류귀종 연쇄 트리 (§7) — 표시·학습용 데이터 */
 export const CHAIN_TREE: { root: string; branches: { gate: string; diseases: string[] }[] } = {

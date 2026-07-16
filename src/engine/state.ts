@@ -116,6 +116,7 @@ export interface DiseaseGauge {
   overflow: string;
   fill?: number; // 초당 기본 변화량 (튜닝)
   stableBand?: number; // 승리 판정용 안정 상한 (튜닝)
+  start?: number; // 시작 게이지 값 (기본 0). 암=이미 존재하는 종양
 }
 
 /** 페이즈 진입 조건식 (데이터로 기술) */
