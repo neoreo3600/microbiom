@@ -40,6 +40,7 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
   root.classList.add("g-root");
 
   let tab: "boss" | "growth" | "roster" | "map" = "boss";
+  let mountKey = "";
 
   root.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
@@ -54,9 +55,9 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
     const a = ctx.actions as InspectorActions;
     const id = el.dataset.id;
     switch (el.dataset.action) {
-      case "circulate": a.circulate(); break;
-      case "purify": a.purify(); break;
-      case "regenerate": a.regenerate(); break;
+      case "circulate": a.circulate(); flashBars(["water", "warmth"]); break;
+      case "purify": a.purify(); flashBars(["infl"]); break;
+      case "regenerate": a.regenerate(); flashBars(["gut"]); break;
       case "attack": a.attack(); break;
       case "crisis": a.crisis(); break;
       case "meditation": a.meditation(); break;
@@ -75,12 +76,44 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
     render();
   });
 
-  function bar(label: string, v01: number, color: string, danger = false): string {
+  function flashBars(keys: string[]): void {
+    keys.forEach((k) => {
+      const el = root.querySelector(`[data-mk="${k}"]`);
+      if (el) {
+        el.classList.add("flash");
+        setTimeout(() => el.classList.remove("flash"), 420);
+      }
+    });
+  }
+
+  function bar(key: string, label: string, v01: number, color: string, danger = false): string {
     const pct = (clampMeter(v01) * 100).toFixed(0);
-    return `<div class="g-bar ${danger ? "danger" : ""}">
+    return `<div class="g-bar ${danger ? "danger" : ""}" data-mk="${key}">
       <span class="g-bl">${label}</span>
       <div class="g-bt"><div class="g-bf" style="width:${pct}%;background:${color}"></div></div>
       <span class="g-bv">${v01.toFixed(2)}</span></div>`;
+  }
+
+  // 보스 HUD 동적 부분 HTML (초기 렌더 + 제자리 갱신 공용)
+  function statusHtml(s: GameState): string {
+    const e = s.encounter;
+    if (!e) return "";
+    let out = "";
+    if (e.mindLock) {
+      const open = mindFoundationMet(s, e.mindLock);
+      out += `<div class="g-status ${open ? "ok" : "warn"}">${open ? "빛(識) 잠금 해제됨 — 이제 마음이 열린다" : "🔒 몸(장·물·온기)을 먼저 회복해야 마음이 열립니다"}</div>`;
+    }
+    if (e.gaugeBehavior === "stealthGrow") {
+      const watched = s.meters.water >= 0.6;
+      out += `<div class="g-status ${watched ? "ok" : "warn"}">${watched ? "👁 감시망 가동 — 연료를 끊어 억제하세요" : "🫥 종양 은신 중 — 물길(감시)을 올리세요"}</div>`;
+    }
+    return out;
+  }
+  function loopHtml(s: GameState): string {
+    const active = feedbackLoops(s).filter((l) => l.active);
+    return active.length
+      ? `<div class="g-loops">🔴 악순환: ${active.map((l) => l.id).join(", ")} — 정화·재생으로 끊으세요</div>`
+      : "";
   }
 
   function renderBoss(s: GameState): string {
@@ -106,42 +139,16 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
       `<div class="g-step ${i < curIdx ? "done" : i === curIdx ? "on" : ""}">${p.label}</div>`
     ).join('<span class="g-step-sep">›</span>');
 
-    // 미터
+    // 미터 (data-mk 로 제자리 갱신)
     const meters = (Object.keys(METER_META) as MeterKey[])
-      .map((k) => bar(METER_META[k].label, s.meters[k], METER_META[k].color)).join("");
-
-    // 상태 배지 (식 잠금 / 감시)
-    let statusLine = "";
-    if (e.mindLock) {
-      const open = mindFoundationMet(s, e.mindLock);
-      statusLine += `<div class="g-status ${open ? "ok" : "warn"}">${open ? "빛(識) 잠금 해제됨 — 이제 마음이 열린다" : "🔒 몸(장·물·온기)을 먼저 회복해야 마음이 열립니다"}</div>`;
-    }
-    if (e.gaugeBehavior === "stealthGrow") {
-      const watched = s.meters.water >= 0.6;
-      statusLine += `<div class="g-status ${watched ? "ok" : "warn"}">${watched ? "👁 감시망 가동 — 연료를 끊어 억제하세요" : "🫥 종양 은신 중 — 물길(감시)을 올리세요"}</div>`;
-    }
-
-    // 오미
+      .map((k) => bar(k, METER_META[k].label, s.meters[k], METER_META[k].color)).join("");
     const amt = tasteAmount(s, e.taste);
-    const tasteRow = `<div class="g-taste">
-      <span>오미 ${tasteLabel(e.taste)} <b>${amt.toFixed(1)}</b> · ${TASTE_EFFECT_DESC[e.taste] ?? ""}</span>
-      <button class="g-mini" data-action="useTaste" ${amt >= TASTE_COST ? "" : "disabled"}>오미 사용</button></div>`;
-
-    // 되먹임 (활성 고리만 경고)
-    const active = feedbackLoops(s).filter((l) => l.active);
-    const loopWarn = active.length
-      ? `<div class="g-loops">🔴 악순환: ${active.map((l) => l.id).join(", ")} — 정화·재생으로 끊으세요</div>`
-      : "";
-
-    // 민감 배너
     const banner = e.sensitive
       ? `<div class="g-disclaimer">은유적 체험이며 의학적 조언이 아닙니다. ${e.disease}은(는) 전문적인 진단·치료가 필요합니다.</div>`
       : "";
-
-    // 승리 오버레이
     const overlay = won ? winOverlay(s, host) : "";
 
-    return `
+    return `<div class="g-boss">
       ${banner}
       <div class="g-host">
         <div><b>${host ? host.name : ""}</b> ${host ? `(${host.age})` : ""} <span class="g-muted">· 숙주 ${s.campaign.hostIndex + 1}/${HOSTS.length}</span></div>
@@ -150,14 +157,14 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
 
       <div class="g-stepper">${stepper}</div>
 
-      <div class="g-gauge ${gaugeOver ? "over" : ""}">
-        <div class="g-gl">${e.gaugeLabel}${gaugeOver ? " ⚠ 넘침!" : ""}</div>
+      <div class="g-gauge ${gaugeOver ? "over" : ""}" id="g-gauge">
+        <div class="g-gl">${e.gaugeLabel}<span id="g-gover">${gaugeOver ? " ⚠ 넘침!" : ""}</span></div>
         <div class="g-gt"><div class="g-gf" style="width:${(Math.min(1, e.gauge) * 100).toFixed(0)}%"></div></div>
       </div>
 
-      <div class="g-meters">${meters}${bar("염증", s.inflammation, "#ef4444", true)}</div>
-      ${statusLine}
-      ${loopWarn}
+      <div class="g-meters">${meters}${bar("infl", "염증", s.inflammation, "#ef4444", true)}</div>
+      <div id="g-status">${statusHtml(s)}</div>
+      <div id="g-loops">${loopHtml(s)}</div>
 
       <div class="g-hands">
         <button class="g-hand h-water" data-action="circulate"><span>순환</span><small>물길·온기 열기</small></button>
@@ -169,19 +176,61 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
         <button class="g-mini ad" data-action="crisis">🎬 위기지원</button>
         <button class="g-mini ad" data-action="meditation">🎬 명상</button>
       </div>
-      ${tasteRow}
-      ${overlay}`;
+      <div class="g-taste">
+        <span>오미 ${tasteLabel(e.taste)} <b data-taste-amt>${amt.toFixed(1)}</b> · ${TASTE_EFFECT_DESC[e.taste] ?? ""}</span>
+        <button class="g-mini" data-action="useTaste" ${amt >= TASTE_COST ? "" : "disabled"}>오미 사용</button></div>
+      ${overlay}</div>`;
+  }
+
+  // 보스 HUD 제자리 갱신 (풀 재빌드 없이 값만 → CSS 트랜지션이 살아남)
+  function updateBoss(s: GameState): void {
+    const e = s.encounter;
+    if (!e) return;
+    const setBar = (key: string, v: number) => {
+      const f = root.querySelector(`[data-mk="${key}"] .g-bf`) as HTMLElement | null;
+      if (f) f.style.width = `${(clampMeter(v) * 100).toFixed(1)}%`;
+      const t = root.querySelector(`[data-mk="${key}"] .g-bv`);
+      if (t) t.textContent = v.toFixed(2);
+    };
+    (Object.keys(METER_META) as MeterKey[]).forEach((k) => setBar(k, s.meters[k]));
+    setBar("infl", s.inflammation);
+    const gf = root.querySelector("#g-gauge .g-gf") as HTMLElement | null;
+    if (gf) gf.style.width = `${(Math.min(1, e.gauge) * 100).toFixed(1)}%`;
+    const gauge = root.querySelector("#g-gauge");
+    const over = e.gauge > 1;
+    if (gauge) gauge.classList.toggle("over", over);
+    const gover = root.querySelector("#g-gover");
+    if (gover) gover.textContent = over ? " ⚠ 넘침!" : "";
+    const st = root.querySelector("#g-status");
+    if (st) st.innerHTML = statusHtml(s);
+    const lp = root.querySelector("#g-loops");
+    if (lp) lp.innerHTML = loopHtml(s);
+    const amt = tasteAmount(s, e.taste);
+    const ta = root.querySelector("[data-taste-amt]");
+    if (ta) ta.textContent = amt.toFixed(1);
+    const tb = root.querySelector('[data-action="useTaste"]') as HTMLButtonElement | null;
+    if (tb) tb.disabled = amt < TASTE_COST;
   }
 
   // ── 탭 라우팅 ──
   function render() {
     const s = ctx.getState();
+    const e = s.encounter;
+    let onb = "1";
+    try { onb = localStorage.getItem("soknara.onboarded") ? "1" : "0"; } catch { /* noop */ }
+    const key = `${tab}|${!!e}|${e?.bossId}|${e?.phase}|${s.campaign.hostIndex}|${onb}`;
+    // 구조가 그대로면 보스 HUD는 제자리 갱신 (미터/게이지 CSS 트랜지션 유지)
+    if (tab === "boss" && key === mountKey && root.querySelector(".g-boss")) {
+      updateBoss(s);
+      return;
+    }
     const body =
       tab === "growth" ? renderGrowth(s)
       : tab === "roster" ? renderRoster(s)
       : tab === "map" ? renderMap(s)
       : renderBoss(s);
     root.innerHTML = `<div class="g-screen">${body}</div>${tabBar()}${onboarding()}`;
+    mountKey = key;
   }
 
   function heat(v: number): string {
@@ -431,6 +480,18 @@ function injectStyles() {
   .gm-cell.on { border-color:#4ade80; color:#dcfce7; background:#14532d; font-weight:700; }
   .gm-cell.done { color:#86efac; border-color:#1f5133; }
   .gm-loop { font-size:12px; color:#fca5a5; padding:3px 0; }
+  .g-screen { background:radial-gradient(130% 55% at 50% 0%, #131b26 0%, #0b0e13 62%); }
+  @keyframes gpulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  .g-gauge.over .g-gf, .g-gauge.over .g-gl { animation:gpulse .8s ease-in-out infinite; }
+  @keyframes gfade { from{opacity:0} to{opacity:1} }
+  @keyframes gpop { from{opacity:0; transform:scale(.92) translateY(6px)} to{opacity:1; transform:none} }
+  .g-overlay { animation:gfade .22s ease-out; }
+  .g-result, .g-intro { animation:gpop .3s cubic-bezier(.2,.8,.2,1); }
+  .g-hand { box-shadow:0 3px 0 rgba(0,0,0,.28); }
+  .g-hand:active { box-shadow:0 1px 0 rgba(0,0,0,.28); }
+  .g-bf, .g-gf { transition:width .28s cubic-bezier(.3,.7,.2,1) !important; }
+  @keyframes gflash { 0%{background:rgba(255,255,255,.16)} 100%{background:transparent} }
+  .g-bar.flash { animation:gflash .42s ease-out; border-radius:8px; }
   `;
   const style = document.createElement("style");
   style.textContent = css;
