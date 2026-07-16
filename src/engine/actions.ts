@@ -13,6 +13,7 @@ import {
   type Generator,
   type Modifier,
   type MutationDef,
+  type UnitDef,
   type Upgrade,
 } from "./state";
 
@@ -86,7 +87,7 @@ export function evolve(
 }
 
 /** 가중치 기반 랜덤 인덱스 선택. rng: [0,1) */
-function weightedPick(defs: MutationDef[], rng: number): MutationDef {
+function weightedPick<T extends { weight: number }>(defs: T[], rng: number): T {
   const total = defs.reduce((a, d) => a + d.weight, 0);
   let r = rng * total;
   for (const d of defs) {
@@ -113,6 +114,25 @@ export function drawMutation(
   );
   s.collection.add(def.id);
   return def;
+}
+
+/**
+ * 히어로 유닛 뽑기 (유익균·Treg 등). 보유 수만큼 grants modifier 가 스택된다.
+ * source `unit:<id>`, collection 엔 `unit:<id>` 로 네임스페이스.
+ */
+export function drawUnit(s: GameState, pool: UnitDef[], rng: number): UnitDef {
+  const def = weightedPick(pool, rng);
+  const owned = s.modifiers.filter((m) => m.source === `unit:${def.id}`).length;
+  s.modifiers.push(
+    instantiate(def.grants, `unit:${def.id}#${owned + 1}`, `unit:${def.id}`)
+  );
+  s.collection.add(`unit:${def.id}`);
+  return def;
+}
+
+/** 특정 유닛의 보유 수 (source 개수로 파생) */
+export function unitCount(s: GameState, id: string): number {
+  return s.modifiers.filter((m) => m.source === `unit:${id}`).length;
 }
 
 /**

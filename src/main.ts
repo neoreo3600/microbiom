@@ -9,6 +9,7 @@ import {
   activateBooster,
   buyUpgrade,
   drawMutation,
+  drawUnit,
   evolve,
 } from "./engine/actions";
 import {
@@ -23,6 +24,7 @@ import { applyEvent } from "./engine/events";
 import { BOSSES } from "./content/bosses";
 import { HOSTS } from "./content/campaign";
 import { HOST_EVENTS } from "./content/events";
+import { UNITS } from "./content/units";
 import {
   loadFromStorage,
   saveToStorage,
@@ -100,6 +102,9 @@ const inspector = createInspector(app, {
     },
     draw() {
       drawMutation(state, C.MUTATIONS, Math.random());
+    },
+    drawHero() {
+      drawUnit(state, UNITS, Math.random());
     },
     prestige() {
       doPrestige(state, C.PRESTIGE, C.initialSnapshot());

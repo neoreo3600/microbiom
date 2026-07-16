@@ -75,6 +75,17 @@ export interface MutationDef {
   grants: Omit<Modifier, "id" | "source">;
 }
 
+/** 히어로 유닛 (유익균·Treg 등) — 뽑아 배치하면 지속 지지 Modifier 소스가 된다. */
+export interface UnitDef {
+  id: string;
+  name: string;
+  rarity: "common" | "rare" | "epic" | "legendary";
+  weight: number; // 뽑기 가중치
+  role: string; // 역할 설명
+  tags?: string[]; // 특히 유효한 보스/월드 id
+  grants: Omit<Modifier, "id" | "source">; // 보유 1당 부여되는 modifier (스택)
+}
+
 export interface PrestigeLayer {
   id: string;
   resetScope: string[]; // 초기화할 상태 키 / modifier source prefix

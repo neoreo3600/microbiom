@@ -10,7 +10,7 @@ import {
   type MeterKey,
 } from "../engine/state";
 import { generatorRate, resourceRate, applyCostModifiers } from "../engine/modifiers";
-import { nextCost } from "../engine/actions";
+import { nextCost, unitCount } from "../engine/actions";
 import { computeCost } from "../engine/cost";
 import { downstreamDifficulty, computeStartMeters, adjustedInflammationRegen } from "../engine/rootnode";
 import { evalGate, victoryMet } from "../engine/boss";
@@ -20,6 +20,7 @@ import { BOSSES, CHAIN_TREE, FEEDBACK_LOOPS } from "../content/bosses";
 import { HOSTS } from "../content/campaign";
 import { HOST_EVENTS, eventsForBoss } from "../content/events";
 import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel } from "../content/worlds";
+import { UNITS, isRelevant } from "../content/units";
 import { fmt, fmtRate, fmtRemain, fmtDuration } from "./format";
 
 export interface InspectorActions {
@@ -28,6 +29,7 @@ export interface InspectorActions {
   buyUpgrade(id: string): void;
   buyPermanent(id: string): void;
   draw(): void;
+  drawHero(): void;
   prestige(): void;
   booster(id: string): void;
   offlineAd(): void;
@@ -101,6 +103,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       case "buyUpgrade": a.buyUpgrade(id!); break;
       case "buyPermanent": a.buyPermanent(id!); break;
       case "draw": a.draw(); break;
+      case "drawHero": a.drawHero(); break;
       case "prestige": a.prestige(); break;
       case "booster": a.booster(id!); break;
       case "offlineAd": a.offlineAd(); break;
@@ -150,6 +153,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       bossPanel(s),
       nextHostPreviewPanel(s),
       weatherPanel(s),
+      unitsPanel(s),
       healCollectionPanel(s),
       growthPanel(s, now),
       boosterOfflinePanel(),
@@ -290,6 +294,28 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
         <span class="muted">${regenWorst.toFixed(3)} →</span> <b style="color:#ef4444">${regenNow.toFixed(3)}</b>
         <span class="pg">${regenNow < regenWorst ? "↓낮을수록 유리" : ""}</span></div>
       <div class="muted">재생 손길로 뿌리를 더 키우면 시작 미터↑·염증 regen↓ → 다음 보스가 수월해진다. "장부터"가 이득.</div>`);
+  }
+
+  // ── 히어로 유닛 (뽑기·로스터) ──
+  function unitsPanel(s: GameState): string {
+    const bossId = s.encounter?.bossId;
+    const owned = UNITS.filter((u) => unitCount(s, u.id) > 0).length;
+    const rows = UNITS.slice()
+      .sort((a, b) => unitCount(s, b.id) - unitCount(s, a.id))
+      .map((u) => {
+        const n = unitCount(s, u.id);
+        const rel = isRelevant(u, bossId);
+        const g = u.grants;
+        const eff = `${g.scope}/${g.target ?? "*"} ${g.type}=${fmt(g.value)}`;
+        return `<div class="li ${n > 0 ? "" : "dim"}">
+          <span class="li-main ${rel ? "egood" : ""}">${rel ? "★ " : ""}${u.name} <span class="r-${u.rarity}">${u.rarity}</span>${n > 0 ? ` ×${n}` : ""}
+            <span class="muted"> · ${u.role}</span></span>
+          <span class="muted">${eff}</span></div>`;
+      }).join("");
+    return section(`히어로 유닛 (로스터 ${owned}/${UNITS.length})`, `
+      <div class="row"><button data-action="drawHero">🦠 히어로 뽑기</button>
+        <span class="muted">★ = 현재 보스에 특히 유효 · 배치 수만큼 스택 · 이주해도 유지</span></div>
+      <div class="list">${rows}</div>`);
   }
 
   // ── 치유한 질병 (도감·지혜) ──
@@ -539,6 +565,8 @@ function injectStyles() {
   button.bad { background:#3a1414; border-color:#5b2020; }
   button.good { background:#123320; border-color:#1c5233; }
   .ebad { color:#fca5a5; } .egood { color:#86efac; }
+  .li-main .r-common { color:#9ca3af; } .li-main .r-rare { color:#60a5fa; }
+  .li-main .r-epic { color:#c084fc; } .li-main .r-legendary { color:#fbbf24; }
   .chain { font-size:11px; padding:2px 0; color:#cbd5e1; }
   .chain.root { color:#22d3ee; font-weight:600; }
   `;
