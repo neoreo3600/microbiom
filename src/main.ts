@@ -36,7 +36,8 @@ import {
 } from "./engine/save";
 import type { GameState } from "./engine/state";
 import * as C from "./content/config";
-import { createInspector } from "./debug/inspector";
+import { createInspector, type InspectorCtx } from "./debug/inspector";
+import { createGameUI } from "./game/gameUI";
 
 // ── 업그레이드 레벨을 state.modifiers 로부터 재동기화 ──────────────
 // upgrade level 은 별도 저장하지 않고 "해당 source 의 modifier 개수" 로 파생.
@@ -80,9 +81,11 @@ function ensureHostEncounter() {
 }
 ensureHostEncounter();
 
-// ── 인스펙터 ───────────────────────────────────────────────────
+// ── 뷰: 게임 UI + 디버그 인스펙터 (토글) ────────────────────────
 const app = document.getElementById("app")!;
-const inspector = createInspector(app, {
+app.innerHTML = `<button id="viewToggle" style="position:fixed;top:8px;right:8px;z-index:30;background:#1b222b;color:#cbd5e1;border:1px solid #2b3540;border-radius:8px;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer">⚙ 디버그</button><div id="game"></div><div id="debug" hidden></div>`;
+
+const ctx: InspectorCtx = {
   getState: () => state,
   now: () => Date.now(),
   actions: {
@@ -231,6 +234,20 @@ const inspector = createInspector(app, {
       if (taste) spendTaste(state, taste, tasteEffect(taste));
     },
   },
+};
+
+const gameUI = createGameUI(document.getElementById("game")!, ctx);
+const inspector = createInspector(document.getElementById("debug")!, ctx);
+
+let view: "game" | "debug" = "game";
+const active = () => (view === "game" ? gameUI : inspector);
+const toggleBtn = document.getElementById("viewToggle")!;
+toggleBtn.addEventListener("click", () => {
+  view = view === "game" ? "debug" : "game";
+  document.getElementById("game")!.hidden = view !== "game";
+  document.getElementById("debug")!.hidden = view !== "debug";
+  toggleBtn.textContent = view === "game" ? "⚙ 디버그" : "🎮 게임";
+  active().render();
 });
 
 // 승리 감지 → 영구 '치유 지혜' 배지 materialize (Decimal은 modifiers 직렬화가 처리)
@@ -254,8 +271,8 @@ setInterval(() => {
   tick(state, Date.now());
   grantClearReward();
 }, 100); // 생산 틱 + 승리 보상
-setInterval(() => inspector.render(), 200); // 화면 갱신
-setInterval(() => inspector.tickGraph(), 1000); // 그래프 샘플
+setInterval(() => active().render(), 200); // 활성 뷰 갱신
+setInterval(() => inspector.tickGraph(), 1000); // 그래프 샘플(디버그)
 setInterval(() => {
   state.lastSeenAt = Date.now();
   saveToStorage(state);
@@ -266,4 +283,4 @@ window.addEventListener("beforeunload", () => {
   saveToStorage(state);
 });
 
-inspector.render();
+active().render();
