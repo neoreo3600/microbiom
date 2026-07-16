@@ -226,12 +226,21 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
     const gaugeOver = e.gauge > 1;
 
     const nextHost = HOSTS[s.campaign.hostIndex + 1];
+    const healMod = s.modifiers.find((m) => m.source === `heal:${e.bossId}`);
+    const healedCount = BOSSES.filter((b) => s.collection.has(`boss:${b.id}`)).length;
+    const gain = C.genesGain(s);
     const winBlock = won
-      ? `<div class="win">🟢 항상성 복원 — ${host ? host.name : ""}: "${host?.recoveryCut ?? ""}"
-           <div class="muted">재발저항 ${e.relapseResist.toFixed(2)} (뿌리 다양성 계승)</div>
+      ? `<div class="result">
+           <div class="result-title">🟢 항상성 복원</div>
+           <div class="result-cut">${host ? `${host.name} (${host.age}) — "${host.recoveryCut}"` : ""}</div>
+           <div class="result-frame">증상을 없앤 게 아니라, 뿌리를 정비해 <b>몸이 스스로 균형을 되찾기 시작</b>했다.</div>
+           <div class="result-rows">
+             <div>🏅 치유 지혜: ${healMod ? `${healMod.scope}/${healMod.target ?? "*"} ${healMod.type}=${fmt(healMod.value)}` : "—"} <span class="muted">(영구·이주해도 유지)</span></div>
+             <div>🧬 계승 genes <b>${fmt(gain)}</b> · 재발저항 ${e.relapseResist.toFixed(2)} · 도감 ${healedCount}/${BOSSES.length}</div>
+           </div>
            ${nextHost
              ? `<button data-action="migrate">이주 → ${nextHost.name} (${nextHost.boss.disease})</button>`
-             : `<span class="muted">모든 숙주 완료 — 캠페인 클리어</span>`}
+             : `<div class="muted">모든 숙주 완료 — 캠페인 클리어 🎉</div>`}
          </div>`
       : "";
 
@@ -579,8 +588,13 @@ function injectStyles() {
   .gates { margin:6px 0; }
   .gate { font-size:11px; padding:2px 0; color:#888; }
   .gate.on { color:#4ade80; }
-  .win { margin-top:8px; color:#4ade80; font-weight:600; }
-  .win button { margin-top:6px; background:#14532d; border-color:#166534; color:#dcfce7; }
+  .result { margin-top:8px; padding:10px 12px; border:1px solid #166534; border-radius:6px; background:#0e2417; }
+  .result-title { color:#4ade80; font-weight:700; font-size:14px; }
+  .result-cut { color:#dcfce7; font-size:12px; margin:4px 0; font-style:italic; }
+  .result-frame { color:#86efac; font-size:11px; margin:4px 0 6px; line-height:1.5; }
+  .result-frame b { color:#bbf7d0; }
+  .result-rows { font-size:11px; color:#cbd5e1; display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
+  .result button { background:#14532d; border-color:#166534; color:#dcfce7; }
   .host { background:#0f0f11; border:1px solid #222; border-radius:4px; padding:6px 8px; margin-bottom:6px; font-size:12px; }
   .host b { color:#f5f5f5; }
   .disclaimer { background:#3a2e12; border:1px solid #7c5e10; border-radius:5px; padding:7px 9px; margin-bottom:7px; font-size:11px; color:#fde68a; line-height:1.5; }
