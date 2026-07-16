@@ -4,7 +4,7 @@
 // 명명·사연은 전부 교체 가능한 데이터. (프레이밍: 치료 아님, 회복의 방향으로만 — §0)
 
 import type { Boss } from "../engine/state";
-import { DIABETES_T2, AUTOIMMUNE_RA, DEPRESSION } from "./bosses";
+import { DIABETES_T2, AUTOIMMUNE_RA, DEPRESSION, NAFLD, ANXIETY } from "./bosses";
 
 export interface Host {
   id: string;
@@ -39,6 +39,22 @@ export const HOSTS: Host[] = [
     bio: "몇 달째 아침이 무겁고, 좋아하던 것에 흥미를 잃은 청년.",
     boss: DEPRESSION,
     recoveryCut: "색이 다시 보이고, 창을 열고, 친구의 연락에 답한다.",
+  },
+  {
+    id: "host_choi",
+    name: "최민재",
+    age: 47,
+    bio: "회식과 야근으로 간이 지쳐가는 직장인.",
+    boss: NAFLD,
+    recoveryCut: "몸이 가벼워지고, 오후의 피로가 줄고, 아침이 개운하다.",
+  },
+  {
+    id: "host_yoon",
+    name: "윤서연",
+    age: 26,
+    bio: "가슴이 자주 두근거리고, 사소한 일에도 긴장이 풀리지 않는.",
+    boss: ANXIETY,
+    recoveryCut: "숨이 한결 편해지고, 두근거림이 잦아들어 다시 밖으로 나선다.",
   },
 ];
 

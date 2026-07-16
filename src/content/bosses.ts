@@ -169,7 +169,53 @@ export const COLON_CANCER = makeCancer({
   tasteResource: "sweet",
 });
 
-export const BOSSES: Boss[] = [DIABETES_T2, AUTOIMMUNE_RA, DEPRESSION, COLON_CANCER];
+// ── 보스 #5 · 지방간 (과잉형 · 목·간담) — 당뇨 템플릿 재사용, 벡터/먹이만 교체 ──
+export const NAFLD: Boss = {
+  id: "nafld",
+  disease: "지방간(NAFLD)",
+  world: "wood",
+  organ: "간담",
+  emotion: "분노",
+  tasteResource: "sour",
+  startMeters: { gut: 0.45, water: 0.4, warmth: 0.45, mind: 0.5 },
+  detoxBurden: "high",
+  inflammation: { value: 0.6, regen: 0.045 },
+  gauge: { id: "간지방", behavior: "fill", drivers: ["과당·정제당", "야식"], overflow: "-allMeters", fill: 0.025, stableBand: 0.5 },
+  heatPolarity: 1, // 대사 점화
+  debuffs: [{ scope: "globalRate", target: "*", type: "mult", value: D(0.6) }], // 간 대사 저하
+  clearReward: { scope: "globalRate", target: "*", type: "mult", value: D(1.2) },
+  phases: {
+    circulation: { requires: "warmth>=0.6 && water>=0.6" },
+    purification: { requires: "detox<=0.4 && inflammation<=0.4" }, // 간 해독 + 염증
+    regeneration: { requires: "gut>=0.7 && mind>=0.6" },
+  },
+  victory: { band: "간지방안정", meters: 0.7, inflammationMax: 0.3 },
+};
+
+// ── 보스 #6 · 불안·공황 (자율·수·신방광) — 존엄·희망, 민감 처리 ──
+export const ANXIETY: Boss = {
+  id: "anxiety",
+  disease: "불안·공황",
+  world: "water5",
+  organ: "신방광",
+  emotion: "공포",
+  tasteResource: "salty",
+  startMeters: { gut: 0.4, water: 0.4, warmth: 0.45, mind: 0.3 },
+  detoxBurden: "mid",
+  inflammation: { value: 0.55, regen: 0.04 },
+  gauge: { id: "과각성", behavior: "fill", drivers: ["교감우위", "스트레스"], overflow: "-allMeters", fill: 0.025, stableBand: 0.5 },
+  heatPolarity: 1,
+  sensitive: true, // 정신건강 — 프레이밍 강조
+  clearReward: { scope: "meter", target: "mind", type: "add", value: D(0.004) },
+  phases: {
+    circulation: { requires: "water>=0.55 && warmth>=0.55" },
+    purification: { requires: "inflammation<=0.4" },
+    regeneration: { requires: "gut>=0.7 && mind>=0.6" },
+  },
+  victory: { band: "안정", meters: 0.7, inflammationMax: 0.3 },
+};
+
+export const BOSSES: Boss[] = [DIABETES_T2, AUTOIMMUNE_RA, DEPRESSION, COLON_CANCER, NAFLD, ANXIETY];
 
 /** 만류귀종 연쇄 트리 (§7) — 표시·학습용 데이터 */
 export const CHAIN_TREE: { root: string; branches: { gate: string; diseases: string[] }[] } = {
