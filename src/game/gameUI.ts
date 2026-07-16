@@ -2,16 +2,21 @@
 // 플레이어용 게임 화면 (모바일 세로 HUD). 디버그 인스펙터와 같은 엔진/액션을 소비한다.
 // 슬라이스 1: 보스전 핵심 루프 — 숙주 헤더 · 페이즈 스테퍼 · 미터/게이지 · 순·정·재 손길 · 승리 오버레이.
 
+import Decimal from "break_infinity.js";
 import {
   clampMeter,
   type GameState,
   type MeterKey,
 } from "../engine/state";
 import { mindFoundationMet, feedbackLoops } from "../engine/meters";
-import { genesGain } from "../content/config";
+import { resourceRate, generatorRate, applyCostModifiers } from "../engine/modifiers";
+import { nextCost, unitCount } from "../engine/actions";
+import { computeCost } from "../engine/cost";
+import * as C from "../content/config";
 import { HOSTS } from "../content/campaign";
 import { BOSSES } from "../content/bosses";
 import { worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
+import { UNITS, isRelevant } from "../content/units";
 import { tasteAmount, TASTE_COST } from "../engine/taste";
 import type { InspectorActions, InspectorCtx } from "../debug/inspector";
 import { fmt } from "../debug/format";
@@ -34,8 +39,17 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
   injectStyles();
   root.classList.add("g-root");
 
+  let tab: "boss" | "growth" | "roster" = "boss";
+
   root.addEventListener("click", (e) => {
-    const el = (e.target as HTMLElement).closest("[data-action]") as HTMLElement | null;
+    const target = e.target as HTMLElement;
+    const tabEl = target.closest("[data-tab]") as HTMLElement | null;
+    if (tabEl) {
+      tab = tabEl.dataset.tab as typeof tab;
+      render();
+      return;
+    }
+    const el = target.closest("[data-action]") as HTMLElement | null;
     if (!el) return;
     const a = ctx.actions as InspectorActions;
     const id = el.dataset.id;
@@ -50,6 +64,10 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
       case "useTaste": a.useTaste(); break;
       case "migrate": a.migrate(); break;
       case "startBoss": a.startBoss(id!); break;
+      case "evolve": a.evolve(); break;
+      case "buyUpgrade": a.buyUpgrade(id!); break;
+      case "buyPermanent": a.buyPermanent(id!); break;
+      case "draw": a.draw(); break;
     }
     render();
   });
@@ -62,19 +80,16 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
       <span class="g-bv">${v01.toFixed(2)}</span></div>`;
   }
 
-  function render() {
-    const s = ctx.getState();
+  function renderBoss(s: GameState): string {
     const host = HOSTS[s.campaign.hostIndex];
     const e = s.encounter;
 
     if (!e) {
-      root.innerHTML = `<div class="g-screen">
-        <div class="g-empty">
+      return `<div class="g-empty">
           <div class="g-title">속나라</div>
           <div class="g-sub">돌볼 속나라가 없습니다.</div>
           ${host ? `<button class="g-primary" data-action="startBoss" data-id="${host.boss.id}">${host.name}의 속나라로 들어가기</button>` : ""}
-        </div></div>`;
-      return;
+        </div>`;
     }
 
     const w = worldById(e.world);
@@ -123,7 +138,7 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
     // 승리 오버레이
     const overlay = won ? winOverlay(s, host) : "";
 
-    root.innerHTML = `<div class="g-screen">
+    return `
       ${banner}
       <div class="g-host">
         <div><b>${host ? host.name : ""}</b> ${host ? `(${host.age})` : ""} <span class="g-muted">· 숙주 ${s.campaign.hostIndex + 1}/${HOSTS.length}</span></div>
@@ -150,18 +165,91 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
         <button class="g-mini ${e.attackRaisesGauge > 0 ? "danger" : ""}" data-action="attack">공격/딜${e.attackRaisesGauge > 0 ? " ⚠자해" : ""}</button>
         <button class="g-mini ad" data-action="crisis">🎬 위기지원</button>
         <button class="g-mini ad" data-action="meditation">🎬 명상</button>
-        <button class="g-mini ad" data-action="drawHero">🎬 뽑기</button>
       </div>
       ${tasteRow}
+      ${overlay}`;
+  }
 
-      ${overlay}
-    </div>`;
+  // ── 탭 라우팅 ──
+  function render() {
+    const s = ctx.getState();
+    const body = tab === "growth" ? renderGrowth(s) : tab === "roster" ? renderRoster(s) : renderBoss(s);
+    root.innerHTML = `<div class="g-screen">${body}</div>${tabBar()}`;
+  }
+
+  function tabBar(): string {
+    const t = (key: string, label: string, icon: string) =>
+      `<button class="g-tab ${tab === key ? "on" : ""}" data-tab="${key}"><span class="g-tab-ic">${icon}</span><span>${label}</span></button>`;
+    return `<div class="g-tabbar">${t("boss", "보스전", "⚕")}${t("growth", "성장", "🌱")}${t("roster", "로스터", "🦠")}</div>`;
+  }
+
+  // ── 성장 탭 ──
+  function renderGrowth(s: GameState): string {
+    const now = ctx.now();
+    const g = s.generators[C.MAIN_GENERATOR_ID];
+    const ep = s.resources[C.RESOURCE_IDS.EP].amount;
+    const epRate = resourceRate(s, C.RESOURCE_IDS.EP, now);
+    const genes = s.prestige.genes[C.PRESTIGE_CURRENCY] ?? new Decimal(0);
+    const evoCost = applyCostModifiers(s, C.RESOURCE_IDS.EP, computeCost(C.TIER.cost, g.tier), now);
+    const canEvo = g.tier < g.maxTier && ep.gte(evoCost);
+    const ups = C.UPGRADES.map((up) => {
+      const maxed = up.maxLevel !== undefined && up.level >= up.maxLevel;
+      const cost = nextCost(s, up, now);
+      const ok = !maxed && s.resources[up.costResource].amount.gte(cost);
+      return `<button class="g-buy" data-action="buyUpgrade" data-id="${up.id}" ${ok ? "" : "disabled"}>
+        <span>${up.id} <small>Lv ${up.level}${up.maxLevel ? "/" + up.maxLevel : ""}</small></span>
+        <span class="g-cost">${maxed ? "MAX" : fmt(cost) + " EP"}</span></button>`;
+    }).join("");
+    const perms = C.PRESTIGE.permanentUpgrades.map((up) => {
+      const maxed = up.maxLevel !== undefined && up.level >= up.maxLevel;
+      const cost = nextCost(s, up, now);
+      const ok = !maxed && genes.gte(cost);
+      return `<button class="g-buy" data-action="buyPermanent" data-id="${up.id}" ${ok ? "" : "disabled"}>
+        <span>${up.id} <small>Lv ${up.level}${up.maxLevel ? "/" + up.maxLevel : ""}</small></span>
+        <span class="g-cost">${maxed ? "MAX" : fmt(cost) + " g"}</span></button>`;
+    }).join("");
+    return `
+      <div class="g-cardtitle">성장 (생산 엔진)</div>
+      <div class="g-statrow"><div class="g-stat"><small>EP</small><b>${fmt(ep)}</b></div>
+        <div class="g-stat"><small>EP/s</small><b>${fmt(epRate)}</b></div>
+        <div class="g-stat"><small>genes</small><b>${fmt(genes)}</b></div></div>
+      <div class="g-card">
+        <div class="g-cardh">진화 · ${g.id} tier ${g.tier}/${g.maxTier}</div>
+        <button class="g-buy" data-action="evolve" ${canEvo ? "" : "disabled"}>
+          <span>진화 → tier ${g.tier + 1} <small>(생산 ×${fmt(C.TIER.mult)})</small></span>
+          <span class="g-cost">${g.tier >= g.maxTier ? "MAX" : fmt(evoCost) + " EP"}</span></button>
+      </div>
+      <div class="g-card"><div class="g-cardh">업그레이드 (EP)</div>${ups}</div>
+      <div class="g-card"><div class="g-cardh">영구 트리 (genes)</div>${perms}</div>
+      <div class="g-card"><div class="g-cardh">돌연변이 도감 · ${s.collection.size}종</div>
+        <button class="g-buy" data-action="draw"><span>돌연변이 뽑기 <small>(무료·생산 강화)</small></span><span class="g-cost">뽑기</span></button></div>`;
+  }
+
+  // ── 로스터 탭 ──
+  function renderRoster(s: GameState): string {
+    const bossId = s.encounter?.bossId;
+    const owned = UNITS.filter((u) => unitCount(s, u.id) > 0).length;
+    const rows = UNITS.slice()
+      .sort((a, b) => unitCount(s, b.id) - unitCount(s, a.id))
+      .map((u) => {
+        const n = unitCount(s, u.id);
+        const rel = isRelevant(u, bossId);
+        return `<div class="g-unit ${n > 0 ? "" : "dim"}">
+          <div><span class="${rel ? "g-rel" : ""}">${rel ? "★ " : ""}${u.name}</span>
+            <small class="r-${u.rarity}"> ${u.rarity}</small>${n > 0 ? ` <b>×${n}</b>` : ""}</div>
+          <small class="g-muted">${u.role}</small></div>`;
+      }).join("");
+    return `
+      <div class="g-cardtitle">히어로 로스터 <span class="g-muted">${owned}/${UNITS.length}</span></div>
+      <button class="g-primary" data-action="drawHero">🎬 히어로 뽑기 (광고)</button>
+      <div class="g-muted" style="margin:8px 0">★ = 현재 보스에 특히 유효 · 배치 수만큼 스택 · 이주해도 유지</div>
+      <div class="g-units">${rows}</div>`;
   }
 
   function winOverlay(s: GameState, host: (typeof HOSTS)[number] | undefined): string {
     const e = s.encounter!;
     const nextHost = HOSTS[s.campaign.hostIndex + 1];
-    const gain = genesGain(s);
+    const gain = C.genesGain(s);
     const healedCount = BOSSES.filter((b) => s.collection.has(`boss:${b.id}`)).length;
     return `<div class="g-overlay"><div class="g-result">
       <div class="g-result-t">🟢 항상성 복원</div>
@@ -186,7 +274,7 @@ function injectStyles() {
   injected = true;
   const css = `
   .g-root { max-width:480px; margin:0 auto; }
-  .g-screen { padding:12px 14px 28px; position:relative; min-height:100vh; box-sizing:border-box; }
+  .g-screen { padding:12px 14px 80px; position:relative; min-height:100vh; box-sizing:border-box; }
   .g-muted { color:#8b96a5; font-size:12px; }
   .g-empty { text-align:center; padding-top:30vh; }
   .g-title { font-size:34px; font-weight:800; letter-spacing:4px; color:#e8eef5; }
@@ -239,6 +327,30 @@ function injectStyles() {
   .g-result-frame { color:#86efac; font-size:12px; line-height:1.6; margin-bottom:10px; }
   .g-result-frame b { color:#bbf7d0; }
   .g-result-rows { font-size:13px; color:#cbd5e1; display:flex; flex-direction:column; gap:3px; margin-bottom:12px; }
+  .g-tabbar { position:fixed; bottom:0; left:0; right:0; max-width:480px; margin:0 auto; display:flex; background:#0c1015; border-top:1px solid #232b35; z-index:15; }
+  .g-tab { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:9px 0 10px; background:none; border:none; color:#5b6472; font:inherit; font-size:11px; cursor:pointer; }
+  .g-tab-ic { font-size:18px; filter:grayscale(1) opacity(.6); }
+  .g-tab.on { color:#4ade80; }
+  .g-tab.on .g-tab-ic { filter:none; }
+  .g-cardtitle { font-size:16px; font-weight:700; color:#e8eef5; margin:6px 0 10px; }
+  .g-statrow { display:flex; gap:8px; margin-bottom:10px; }
+  .g-stat { flex:1; background:#12161c; border:1px solid #232b35; border-radius:8px; padding:8px; text-align:center; }
+  .g-stat small { display:block; color:#8b96a5; font-size:10px; }
+  .g-stat b { color:#e8eef5; font-size:15px; }
+  .g-card { background:#12161c; border:1px solid #232b35; border-radius:10px; padding:10px 12px; margin-bottom:10px; }
+  .g-cardh { font-size:12px; color:#8b96a5; margin-bottom:7px; }
+  .g-buy { display:flex; justify-content:space-between; align-items:center; width:100%; background:#171d25; border:1px solid #2b3540; border-radius:8px; padding:10px 12px; margin-bottom:6px; color:#dbe4ee; font:inherit; font-size:13px; cursor:pointer; text-align:left; }
+  .g-buy:last-child { margin-bottom:0; }
+  .g-buy small { color:#8b96a5; }
+  .g-buy:disabled { opacity:.4; }
+  .g-buy:active:not(:disabled) { transform:translateY(1px); }
+  .g-cost { color:#4ade80; font-weight:700; white-space:nowrap; }
+  .g-units { display:flex; flex-direction:column; gap:6px; }
+  .g-unit { background:#12161c; border:1px solid #232b35; border-radius:8px; padding:8px 12px; }
+  .g-unit.dim { opacity:.5; }
+  .g-unit b { color:#e8eef5; }
+  .g-rel { color:#86efac; }
+  .r-common { color:#9ca3af; } .r-rare { color:#60a5fa; } .r-epic { color:#c084fc; } .r-legendary { color:#fbbf24; }
   `;
   const style = document.createElement("style");
   style.textContent = css;
