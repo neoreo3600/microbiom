@@ -12,7 +12,7 @@ import {
 import { generatorRate, resourceRate, applyCostModifiers } from "../engine/modifiers";
 import { nextCost } from "../engine/actions";
 import { computeCost } from "../engine/cost";
-import { downstreamDifficulty } from "../engine/rootnode";
+import { downstreamDifficulty, computeStartMeters, adjustedInflammationRegen } from "../engine/rootnode";
 import { evalGate, victoryMet } from "../engine/boss";
 import * as C from "../content/config";
 import { BOSSES, CHAIN_TREE, FEEDBACK_LOOPS } from "../content/bosses";
@@ -127,6 +127,7 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
       ecosystemPanel(s, ep, epRate, genes),
       rootnodePanel(s),
       bossPanel(s),
+      nextHostPreviewPanel(s),
       growthPanel(s, now),
       boosterOfflinePanel(),
       prestigeSavePanel(s, genes),
@@ -224,6 +225,34 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
         <button data-action="attack" class="${e.attackRaisesGauge > 0 ? "danger" : ""}">공격/딜${e.attackRaisesGauge > 0 ? " ⚠자해" : ""}</button>
       </div>
       ${winBlock}`);
+  }
+
+  // ── 다음 숙주 미리보기 (만류귀종 체감) ──
+  function nextHostPreviewPanel(s: GameState): string {
+    const next = HOSTS[s.campaign.hostIndex + 1];
+    if (!next) {
+      return section("다음 숙주 미리보기 (만류귀종)", `<span class="muted">마지막 숙주 — 다음 없음</span>`);
+    }
+    const boss = next.boss;
+    const preview = computeStartMeters(boss, s); // 현재 뿌리 반영
+    const regenNow = adjustedInflammationRegen(boss, s);
+    const regenWorst = boss.inflammation.regen * 2; // diversity 0 = 최악
+    const rows = (Object.keys(METER_META) as MeterKey[]).map((k) => {
+      const worst = boss.startMeters[k]; // 뿌리 0 → base
+      const nowV = preview[k];
+      const gain = nowV - worst;
+      return `<div class="prev"><span class="bl">${METER_META[k].label}</span>
+        <span class="muted">${worst.toFixed(2)} →</span> <b style="color:${METER_META[k].color}">${nowV.toFixed(2)}</b>
+        <span class="pg">${gain > 0.001 ? "+" + gain.toFixed(2) : ""}</span></div>`;
+    }).join("");
+    return section("다음 숙주 미리보기 (만류귀종)", `
+      <div class="muted">${next.name} (${next.age}) · ${boss.disease} [${boss.world}]</div>
+      <div class="sub">현재 뿌리(다양성 ${s.rootnode.diversity.toFixed(2)}) 진입 시 시작값 — 최악(뿌리0) → 현재</div>
+      ${rows}
+      <div class="prev"><span class="bl">염증 regen</span>
+        <span class="muted">${regenWorst.toFixed(3)} →</span> <b style="color:#ef4444">${regenNow.toFixed(3)}</b>
+        <span class="pg">${regenNow < regenWorst ? "↓낮을수록 유리" : ""}</span></div>
+      <div class="muted">재생 손길로 뿌리를 더 키우면 시작 미터↑·염증 regen↓ → 다음 보스가 수월해진다. "장부터"가 이득.</div>`);
   }
 
   // ── 성장엔진 (생산: 진화/업그레이드/뽑기/genes 트리) ──
@@ -408,6 +437,9 @@ function injectStyles() {
   .win button { margin-top:6px; background:#14532d; border-color:#166534; color:#dcfce7; }
   .host { background:#0f0f11; border:1px solid #222; border-radius:4px; padding:6px 8px; margin-bottom:6px; font-size:12px; }
   .host b { color:#f5f5f5; }
+  .prev { display:flex; align-items:center; gap:8px; font-size:12px; padding:2px 0; }
+  .prev .bl { width:80px; color:#cbd5e1; }
+  .prev .pg { color:#4ade80; font-size:11px; }
   .chain { font-size:11px; padding:2px 0; color:#cbd5e1; }
   .chain.root { color:#22d3ee; font-weight:600; }
   `;
