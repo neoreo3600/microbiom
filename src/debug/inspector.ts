@@ -276,8 +276,10 @@ export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
     const migrateHint = won
       ? (nextHost ? `클리어! 이주 시 <b>${fmt(gain)}</b> genes 계승 → ${nextHost.name}` : "모든 숙주 완료")
       : `이주는 <b>현재 숙주 항상성 복원(승리)</b> 후 가능 · 계승 예정 genes ${fmt(gain)}`;
+    const quality = Math.floor(s.rootnode.diversity * C.GENES_TUNING.qualityMax);
     return section("이주 (프레스티지) / 세이브", `
       <div class="row"><span class="muted">${migrateHint}</span></div>
+      <div class="muted">genes ${fmt(gain)} = 기본 ${C.GENES_TUNING.base} + 뿌리품질 ${quality} + 숙주깊이 ${s.campaign.hostIndex * C.GENES_TUNING.hostBonus} + 그라인드</div>
       <div class="row wrap">
         <button data-action="migrate" ${won && nextHost ? "" : "disabled"}>이주 → 다음 숙주</button>
         <button data-action="save">세이브</button>

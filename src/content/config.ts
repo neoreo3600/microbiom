@@ -167,7 +167,22 @@ export const OFFLINE_AD = {
 // ─────────────────────────────────────────────────────────────
 // 프레스티지 레이어 (환생)
 // ─────────────────────────────────────────────────────────────
-const PRESTIGE_K = 1e6; // gain = floor(sqrt(lifetimeEP / K))
+// 이주 보상(genes) 튜닝 — 클리어 기본 보상 + 뿌리 재건 품질 + 숙주 깊이 + 그라인드 보너스.
+// (핵심: 초반 숙주도 이주 보상이 남고, 뿌리를 튼튼히 재건할수록 더 준다 → 의도한 전략에 보상)
+export const GENES_TUNING = {
+  base: 10, // 항상성 복원(클리어) 기본 보상
+  qualityMax: 20, // 뿌리노드 다양성(재건 품질) 최대 보너스
+  hostBonus: 10, // 숙주가 깊어질수록 (hostIndex 당)
+  progressK: 1e4, // 장기 그라인드 보너스 계수: floor(√(lifetimeEP/K))
+};
+
+export function genesGain(s: GameState): Decimal {
+  const lifeEP = s.lifetime[RESOURCE_IDS.EP] ?? D(0);
+  const progress = lifeEP.div(GENES_TUNING.progressK).sqrt().floor(); // 그라인드 보너스
+  const quality = Math.floor(s.rootnode.diversity * GENES_TUNING.qualityMax); // 뿌리 재건 품질 0..20
+  const hostBonus = (s.campaign?.hostIndex ?? 0) * GENES_TUNING.hostBonus;
+  return progress.add(GENES_TUNING.base + quality + hostBonus);
+}
 
 export const PRESTIGE: PrestigeLayer = {
   id: "genesis",
@@ -175,10 +190,7 @@ export const PRESTIGE: PrestigeLayer = {
   // resetScope: EP·generator 되돌리고 EP 계열 modifier 제거.
   //   mutation(도감)·prestige(영구트리)·setBonus 는 유지된다.
   resetScope: ["resources", "generators", "upgrade:", "tier:", "booster:"],
-  gainFormula: (s) => {
-    const lifeEP = s.lifetime[RESOURCE_IDS.EP] ?? D(0);
-    return lifeEP.div(PRESTIGE_K).sqrt().floor();
-  },
+  gainFormula: genesGain,
   permanentUpgrades: [
     {
       id: "core",
