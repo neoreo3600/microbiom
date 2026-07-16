@@ -12,6 +12,15 @@ import {
   evolve,
 } from "./engine/actions";
 import {
+  circulate,
+  endEncounter,
+  forceAttack,
+  purify,
+  regenerate,
+  startEncounter,
+} from "./engine/boss";
+import { BOSSES } from "./content/bosses";
+import {
   loadFromStorage,
   saveToStorage,
   clearStorage,
@@ -127,6 +136,26 @@ const inspector = createInspector(app, {
       state = C.createInitialState(Date.now());
       syncLevels(state);
       console.log("[reset] ok");
+    },
+    // ── 《속나라》 보스전 & 순·정·재 손길 ──
+    startBoss(id) {
+      const boss = BOSSES.find((b) => b.id === id);
+      if (boss) startEncounter(state, boss);
+    },
+    leaveBoss() {
+      endEncounter(state);
+    },
+    circulate() {
+      circulate(state);
+    },
+    purify() {
+      purify(state);
+    },
+    regenerate() {
+      regenerate(state);
+    },
+    attack() {
+      forceAttack(state);
     },
   },
 });

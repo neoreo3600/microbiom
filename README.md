@@ -1,11 +1,16 @@
-# Idle Growth Engine — 방치형 성장엔진 코어
+# 《속나라》 — 방치형 치유 생태계 게임 · 엔진 코어 (P0)
 
-스토리·세계관·캐릭터·아트·애니메이션·사운드·연출을 **전부 배제**하고,
-오직 **"수치가 커지는 엔진"** 과 **"그 수치를 조작하는 요소"** 만 구현한 방치형(idle) 게임 코어.
+한 사람의 몸속 생태계("속나라")를 재건해 회복시키고, 다음 사람에게로 **이주**하는 방치형 성장 게임의
+데이터 주도 엔진 코어. 5개 프리미티브 성장엔진 위에 **4대 미터(숲·물길·온기·빛) + 염증/해독 +
+뿌리노드(마이크로바이옴) + 오행 월드 + 보스(질병)** 도메인을 얹었다.
+
+> **프레이밍(비협상):** 치료 시뮬레이션이 아니라 몸속 생태계를 정비·체험하는 판타지. 승리는 "완치"가
+> 아니라 "생태계 균형(항상성) 회복"의 은유다. **실제 질병은 의료진의 진단·치료가 필요하며, 본 게임은
+> 의학적 조언이 아니다.** 특정 질병이 게임/생활습관만으로 낫는다는 표현·의료 대체 서사·자해/위기 묘사 금지.
 
 가장 중요한 원칙: **기능을 만들지 말고 프리미티브를 만든다.**
-진화 · 업그레이드 · 돌연변이 · 환생 · 광고 부스터 · 오프라인 보상은
-전부 아래 5개 프리미티브의 인스턴스이며, 특수 케이스 코드 없이 **데이터(config)만으로** 표현된다.
+진화·업그레이드·유익균 뽑기·이주·부스터·오프라인·보스는 전부 아래 5개 프리미티브의 인스턴스이며,
+신규 질병/보스는 **엔진 코드 변경 없이 config만 추가**해 표현된다.
 
 ## 실행
 
@@ -41,23 +46,63 @@ npm run build      # 타입검사 + 프로덕션 빌드
 
 → 오른쪽 열은 전부 "Modifier" 거나 "Modifier 를 낳는 전환". **새 기능 = 새 config, not 새 코드.**
 
+## 《속나라》 도메인 레이어 (P0)
+
+### 4대 조작 미터 — 장수온심(腸水溫心)
+
+플레이어가 매 순간 굴리는 다이얼. 각 미터는 0..1 이며 뿌리노드·염증·해독·되먹임 압력의 적분으로 움직인다.
+
+| 미터 | 표면 | 내부 키 | 다스리는 것 |
+|---|---|---|---|
+| 숲(기르다) | 영양·미생물 | `gut` | 유익균·다양성·SCFA |
+| 물길(흐르다) | 수·미네랄 | `water` | 순환·체액·전해질 |
+| 온기(지피다) | 호르몬·체온 | `warmth` | 대사·효소·면역 (병에 따라 ↑/국소↓) |
+| 빛(밝히다) | 마음·의식 | `mind` | 자율신경·파장. 부정→긍정 전환 |
+
+보조 2: `inflammation`(오염, 크로스-빌런 — 대부분 보스가 이걸로 self-regen) · `detox`(해독 부담).
+
+### 뿌리노드(마이크로바이옴)와 만류귀종 종속
+
+- **뿌리노드**의 `diversity`(다양성)가 내구도=방어력. 4출력(면역·신경전달·SCFA·해독)을 전 미터에 배급.
+- **종속 규칙(구현):** `boss.startMeters ∝ f(diversity)` — 뿌리가 튼튼할수록 보스가 **덜 무너진 채** 시작하고
+  염증 regen 이 약해진다. → **"장부터"가 잔소리가 아니라 수학적으로 유리한 전략** (`engine/rootnode.ts`).
+- **되먹임 고리:** 장-뇌축(장↓→세로토닌↓→빛↓), 빛↓→코르티솔↑→염증↑ (`engine/meters.ts`).
+- 생태계 사슬: **뿌리노드 → 미터 → 생산** (미터 평균이 자원 생산율의 마지막 배수, `meterHealthMult`).
+
+### 보스(질병) — 순환→정화→재생, 항상성 승리
+
+보스는 미터 벡터 + 3페이즈 게이트 + 승리 밴드의 **데이터 한 블록**(`content/bosses.ts`). 승리는 "죽이기"가
+아니라 **항상성 복원**(전 미터 ≥ 밴드 + 염증 낮음 + 질병 게이지 안정). 페이즈 게이트는 문자열
+(`"warmth>=0.6 && water>=0.6"`)로 기술하고 엔진(`boss.evalGate`)이 직접 평가한다.
+
+| 보스 | 아키타입 | 틀리는 직관 | 핵심 (허실 분기) |
+|---|---|---|---|
+| `diabetes_T2` (토·비위) | 과잉형 | "더 만들면 이긴다" | 차오르는 혈당 굶기기 · 온기↑(보) |
+| `autoimmune_RA` (목·간담) | 공격형 | "때리면 이긴다" | 공격=자해(게이지↑) · 국소 온기↓(사·淸熱) · Treg 관용 |
+
+→ **같은 미터(온기), 정반대 조작 방향** = 한의학 허실(虛實) 분기가 게임 손맛으로 증명됨.
+
 ## 폴더 구조 (셋은 서로 독립)
 
 ```
 src/
   engine/          // 순수 로직 (framework·content·debug 무관)
-    state.ts       // GameState 타입 + 잔액 헬퍼
-    modifiers.ts   // modifier 스택 → effective rate/cost 계산
+    state.ts       // GameState 타입 + 도메인 타입 + 잔액/미터 헬퍼
+    modifiers.ts   // modifier 스택 → effective rate/cost/offline 계산 (+ 미터 건강도 결합)
     cost.ts        // CostCurve (exp/lin/poly)
     actions.ts     // 진화/구매/뽑기/부스터 (Modifier 를 만드는 액션)
-    tick.ts        // 틱 루프: 생산 누적 · 임시 modifier 만료 · unlock 평가
+    meters.ts      // 미터·염증·해독·게이지 연속 시뮬레이션 + 되먹임 고리
+    rootnode.ts    // 뿌리노드 재건 + 만류귀종 종속 규칙 (startMeters/regen)
+    boss.ts        // 인카운터 시작·페이즈 게이트 평가·항상성 승리 + 순·정·재 손길
+    tick.ts        // 틱 루프: 생산 누적 · 생태계 스텝 · 페이즈 평가 · 만료 · unlock
     offline.ts     // 오프라인 적분 (cap 포함)
-    prestige.ts    // 리셋 + 변환
+    prestige.ts    // 리셋 + 변환 (= 다음 사람에게 이주)
     save.ts        // 직렬화 / 역직렬화 / localStorage
   content/
-    config.ts      // ★ 데이터 주도 콘텐츠 (여기만 고치면 콘텐츠 추가됨)
+    config.ts      // ★ 성장엔진 콘텐츠 (미터/뿌리노드 초기값·업그레이드·뽑기·이주 트리)
+    bosses.ts      // ★ 보스(질병) 데이터 — 여기만 고치면 새 보스가 붙는다
   debug/
-    inspector.ts   // 숫자 대시보드 + 트리거 버튼 + EP 성장 그래프
+    inspector.ts   // 미터·뿌리노드·보스전·만류귀종·성장 대시보드 + 난이도 그래프
     format.ts      // 큰 수 포매터
   main.ts          // engine + content + inspector 조립
 ```
@@ -118,24 +163,65 @@ resource total = (Σ generator rate + Σadd:globalRate) × Πmult:globalRate
 같은 방식으로 **새 tier / 돌연변이 / 프레스티지 영구 트리 / 부스터** 도 각 배열(`TIER`, `MUTATIONS`,
 `PRESTIGE.permanentUpgrades`, `BOOSTERS`)에 데이터만 추가하면 된다.
 
+### 새 보스(질병)도 config 한 블록 (engine 0줄)
+
+`src/content/bosses.ts` 의 `BOSSES` 배열에 `Boss` 하나를 추가하면 인스펙터에 시작 버튼·미터 벡터·
+페이즈 게이트·승리 판정이 전부 자동으로 붙는다. 게이트는 `gut/water/warmth/mind/inflammation/gauge/diversity`
+식별자로 쓴 문자열이면 엔진이 그대로 평가한다.
+
+```ts
+export const NAFLD: Boss = {
+  id: "nafld", disease: "지방간", world: "wood", organ: "간담",
+  emotion: "분노", tasteResource: "sour",
+  startMeters: { gut: 0.45, water: 0.4, warmth: 0.45, mind: 0.5 },
+  detoxBurden: "high",
+  inflammation: { value: 0.6, regen: 0.04 },
+  gauge: { id: "간지방", behavior: "fill", drivers: ["과당"], overflow: "-allMeters", fill: 0.02, stableBand: 0.5 },
+  heatPolarity: 1,
+  phases: {
+    circulation: { requires: "warmth>=0.55 && water>=0.55" },
+    purification: { requires: "detox<=0.4 && inflammation<=0.4" },
+    regeneration: { requires: "gut>=0.7 && mind>=0.6" },
+  },
+  victory: { band: "간지방안정", meters: 0.7, inflammationMax: 0.3 },
+};
+// BOSSES 배열에 NAFLD 추가 → 끝. 엔진 코드 변경 없음.
+```
+
 ## 디버그 인스펙터
 
 `npm run dev` → 브라우저. 예쁠 필요 없이 **밸런스 감 잡기** 만 목적.
 
-- **실시간:** 각 resource 값·초당 생산량, 활성 modifier 목록(source/scope/value/남은시간), prestige 상태, 도감 진행률
-- **트리거 버튼:** 진화 · 업그레이드 · 돌연변이 뽑기 · 환생 · 부스터(광고 스텁) · 오프라인 ×N(스텁) · 세이브 · 로드 · +시간 스킵
-- **그래프:** 시간에 따른 EP 성장 곡선(log10)
+- **실시간:** 미터4(숲·물길·온기·빛) 바 · 염증 · 해독 · 뿌리노드(다양성+4출력+하류난이도) · 보스 페이즈·게이지·게이트 상태 · 활성 modifier · 도감/이주
+- **트리거:** [순환][정화][재생][공격/딜] 손길 · 보스 시작/이탈 · 진화·업그레이드·뽑기·이주 · 부스터·오프라인 ×N · 세이브/로드 · +시간 스킵
+- **그래프:** 미터 평균(초록) + 염증(빨강) 추이 = 난이도 곡선
+- **만류귀종 트리:** 뿌리→관문→질병 연쇄 + 되먹임 고리 표시
 
 ## 수용 기준 달성
 
+### 성장엔진 코어 (Appendix)
+
 | # | 기준 | 달성 |
 |---|---|---|
-| 1 | `content/config.ts` 만 고쳐 콘텐츠 추가 시 engine 변경 0줄 | 위 예시대로 config 배열 추가만으로 동작 |
+| 1 | `content/config.ts` 만 고쳐 콘텐츠 추가 시 engine 변경 0줄 | config 배열 추가만으로 동작 |
 | 2 | `1e100+` 정상 표시·계산 | 전 계산 `Decimal`, 포매터는 mantissa/exponent 표시 |
 | 3 | +8h 스킵 → cap 적용 오프라인 보상 | `claimOffline` 이 `min(elapsed, cap)` 적용 |
 | 4 | 임시 부스터 만료 시 생산율 정확 원복 | 계산 순서 고정 + `expiresAt` 만료 제거 |
-| 5 | 환생 후 영구 modifier 로 재도달 가속 | `resetScope` 가 mutation/prestige/setBonus 는 보존 |
+| 5 | 이주 후 영구 modifier 로 재도달 가속 | `resetScope` 가 mutation/prestige/setBonus 보존 |
 | 6 | 세이브→로드 무손실 | Decimal/Set 변환 + condition 재부착 + level 파생 |
+
+### 《속나라》 P0 (핸드오프 §10)
+
+| # | 기준 | 달성 |
+|---|---|---|
+| P0-1 | config만으로 신규 보스 추가 시 엔진 0줄 | `content/bosses.ts` 배열 추가만으로 (위 예시) |
+| P0-2 | 큰 수 정상 · 세이브/로드 무손실 | 미터·염증·해독·뿌리노드·인카운터 전부 무손실 복원 |
+| P1-1 | 뿌리 재건 시 하류 난이도↓ 수치 확인 | `computeStartMeters`/`adjustedInflammationRegen` — diversity↑ → startMeters↑·regen↓ |
+| P1-2 | 순·정·재 페이즈 게이팅 작동 | `boss.evalGate` 문자열 게이트로 순환→정화→재생→항상성 승리 |
+| — | 허실 분기(같은 미터 정반대) | `heatPolarity` — 당뇨 온기↑ / 자가면역 온기↓(淸熱) |
+
+> 위 항목은 실제 엔진 코드를 esbuild 번들로 구동한 검증 하니스(32개 단언)와 Chromium 실 브라우저
+> 구동(9개 체크: 패널 렌더·보스 시작·순정재 손길 반응·세이브/로드·콘솔 에러 0)으로 확인했다.
 
 ## 비목표 (구현하지 않음)
 
