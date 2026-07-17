@@ -376,12 +376,28 @@ export function bossEmblem(opts: { id: string; element?: Element; behavior?: str
   const size = opts.size ?? 56;
   const hue = ELEMENT_HUE[opts.element ?? "earth"];
   const p = palette(hue);
-  const cid = `ec_${opts.id}`;
+  const uid = `ec_${opts.id}`;
+  // 메달리온 프레임 + 깊이 있는 필드 + 상단 글로스로 프리미엄 아이콘 느낌.
   return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" role="img" aria-label="${opts.id} 불균형 문양" xmlns="http://www.w3.org/2000/svg">
-    <defs><clipPath id="${cid}"><circle cx="50" cy="50" r="38"/></clipPath></defs>
-    <circle cx="50" cy="50" r="40" fill="${p.base}" opacity="0.08"/>
-    <g clip-path="url(#${cid})">${emblemInner(opts.id, opts.behavior, hue)}</g>
-    <circle cx="50" cy="50" r="40" fill="none" stroke="${p.base}" stroke-width="2.5" opacity="0.5"/>
+    <defs>
+      <clipPath id="${uid}c"><circle cx="50" cy="50" r="37"/></clipPath>
+      <radialGradient id="${uid}f" cx="42%" cy="34%" r="72%">
+        <stop offset="0%" stop-color="hsl(${hue} 42% 24%)"/>
+        <stop offset="70%" stop-color="hsl(${hue} 46% 15%)"/>
+        <stop offset="100%" stop-color="hsl(${hue} 50% 10%)"/>
+      </radialGradient>
+      <linearGradient id="${uid}r" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${p.light}"/>
+        <stop offset="55%" stop-color="${p.base}"/>
+        <stop offset="100%" stop-color="${p.deep}"/>
+      </linearGradient>
+    </defs>
+    <circle cx="50" cy="53" r="40" fill="#000" opacity="0.22"/>
+    <circle cx="50" cy="50" r="39" fill="url(#${uid}f)"/>
+    <g clip-path="url(#${uid}c)">${emblemInner(opts.id, opts.behavior, hue)}</g>
+    <circle cx="50" cy="50" r="37" fill="none" stroke="#000" stroke-width="1.5" opacity="0.28"/>
+    <circle cx="50" cy="50" r="39" fill="none" stroke="url(#${uid}r)" stroke-width="3"/>
+    <path d="M24 28 Q50 14 76 28" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity="0.22"/>
   </svg>`;
 }
 
@@ -390,6 +406,7 @@ export function worldBackdrop(el: Element | undefined): string {
   const key: Element = el ?? "earth";
   const [top, base] = SKY[key];
   const gid = `sky_${key}`;
+  const hue = ELEMENT_HUE[key];
   return `<svg viewBox="0 0 ${VB.w} ${VB.h}" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <defs>
       <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
@@ -397,8 +414,18 @@ export function worldBackdrop(el: Element | undefined): string {
         <stop offset="60%" stop-color="${base}"/>
         <stop offset="100%" stop-color="${base}"/>
       </linearGradient>
+      <radialGradient id="${gid}_light" cx="50%" cy="20%" r="65%">
+        <stop offset="0%" stop-color="hsl(${hue} 45% 40%)" stop-opacity="0.22"/>
+        <stop offset="100%" stop-color="hsl(${hue} 45% 40%)" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="${gid}_vig" cx="50%" cy="42%" r="75%">
+        <stop offset="55%" stop-color="#000" stop-opacity="0"/>
+        <stop offset="100%" stop-color="#000" stop-opacity="0.4"/>
+      </radialGradient>
     </defs>
     <rect x="0" y="0" width="${VB.w}" height="${VB.h}" fill="url(#${gid})"/>
+    <rect x="0" y="0" width="${VB.w}" height="${VB.h}" fill="url(#${gid}_light)"/>
     ${motif(key)}
+    <rect x="0" y="0" width="${VB.w}" height="${VB.h}" fill="url(#${gid}_vig)"/>
   </svg>`;
 }
