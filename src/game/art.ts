@@ -67,85 +67,130 @@ const RARITY_RANK: Record<UnitDef["rarity"], number> = {
   common: 0, rare: 1, epic: 2, legendary: 3,
 };
 
-/** 유닛 아바타 SVG 문자열. size = px. unit.art 가 있으면 그대로 사용(향후 교체용). */
+const RARITY_HUE_FALLBACK = ECO_HUES;
+
+// 유닛별 캐릭터 디자인 — 실루엣·색·표정·소품을 의도적으로 배정(랜덤 아님).
+type Shape = "round" | "capsule" | "peanut" | "teardrop";
+type Eyes = "happy" | "calm" | "alert" | "sparkle";
+type Acc = "leaf" | "spark" | "visor" | "halo" | "wave" | "swirl" | "crown" | "glowring" | "scarf" | "none";
+interface Design { hue: number; shape: Shape; eyes: Eyes; acc: Acc; }
+
+const UNIT_DESIGN: Record<string, Design> = {
+  lacto: { hue: 145, shape: "capsule", eyes: "happy", acc: "leaf" },
+  bifido: { hue: 122, shape: "peanut", eyes: "happy", acc: "leaf" },
+  akker: { hue: 175, shape: "round", eyes: "happy", acc: "scarf" },
+  butyrate: { hue: 40, shape: "round", eyes: "sparkle", acc: "spark" },
+  nk: { hue: 8, shape: "round", eyes: "alert", acc: "visor" },
+  treg: { hue: 205, shape: "round", eyes: "calm", acc: "halo" },
+  psycho: { hue: 280, shape: "round", eyes: "sparkle", acc: "wave" },
+  symbiont: { hue: 265, shape: "teardrop", eyes: "calm", acc: "swirl" },
+  apex: { hue: 45, shape: "round", eyes: "sparkle", acc: "crown" },
+  immortal: { hue: 190, shape: "round", eyes: "sparkle", acc: "glowring" },
+};
+
+const CX = 32, CY = 35;
+
+function bodyShape(shape: Shape, fill: string, stroke: string, seed: number): string {
+  switch (shape) {
+    case "capsule":
+      return `<rect x="20" y="15" width="24" height="39" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="1.4"/>`;
+    case "peanut":
+      return `<path d="M18 34 a11 12 0 0 1 11 -12 a10 8 0 0 1 6 0 a11 12 0 0 1 11 12 a11 13 0 0 1 -11 13 a10 8 0 0 1 -6 0 a11 13 0 0 1 -11 -13 Z" fill="${fill}" stroke="${stroke}" stroke-width="1.4"/>`;
+    case "teardrop":
+      return `<path d="M32 15 C 47 24 46 46 32 53 C 18 46 17 24 32 15 Z" fill="${fill}" stroke="${stroke}" stroke-width="1.4"/>`;
+    default:
+      return `<path d="${blobPath(CX, CY, 19, 9, 0.05, mulberry32(seed))}" fill="${fill}" stroke="${stroke}" stroke-width="1.4"/>`;
+  }
+}
+
+function eyeGroup(eyes: Eyes, ink: string): string {
+  const lx = CX - 6.5, rx = CX + 6.5, ey = CY - 1;
+  if (eyes === "calm") {
+    return `<path d="M${lx - 3} ${ey} Q${lx} ${ey - 3.4} ${lx + 3} ${ey}" fill="none" stroke="${ink}" stroke-width="1.9" stroke-linecap="round"/>
+      <path d="M${rx - 3} ${ey} Q${rx} ${ey - 3.4} ${rx + 3} ${ey}" fill="none" stroke="${ink}" stroke-width="1.9" stroke-linecap="round"/>`;
+  }
+  if (eyes === "alert") {
+    return `<ellipse cx="${lx}" cy="${ey}" rx="2.6" ry="4.2" fill="${ink}"/><ellipse cx="${rx}" cy="${ey}" rx="2.6" ry="4.2" fill="${ink}"/>
+      <circle cx="${lx + 1}" cy="${ey - 1.6}" r="1.1" fill="#fff"/><circle cx="${rx + 1}" cy="${ey - 1.6}" r="1.1" fill="#fff"/>
+      <path d="M${lx - 3} ${ey - 5.5} l5 1.5" stroke="${ink}" stroke-width="1.3" stroke-linecap="round"/>
+      <path d="M${rx + 3} ${ey - 5.5} l-5 1.5" stroke="${ink}" stroke-width="1.3" stroke-linecap="round"/>`;
+  }
+  // happy / sparkle — 큰 광택 눈
+  const spark = eyes === "sparkle"
+    ? `<circle cx="${lx - 1.6}" cy="${ey + 1.8}" r="0.8" fill="#fff" opacity=".85"/><circle cx="${rx - 1.6}" cy="${ey + 1.8}" r="0.8" fill="#fff" opacity=".85"/>`
+    : "";
+  return `<ellipse cx="${lx}" cy="${ey}" rx="3.3" ry="4.3" fill="${ink}"/><ellipse cx="${rx}" cy="${ey}" rx="3.3" ry="4.3" fill="${ink}"/>
+    <circle cx="${lx + 1.2}" cy="${ey - 1.7}" r="1.4" fill="#fff"/><circle cx="${rx + 1.2}" cy="${ey - 1.7}" r="1.4" fill="#fff"/>${spark}`;
+}
+
+function accessory(acc: Acc, p: ReturnType<typeof palette>): string {
+  switch (acc) {
+    case "leaf":
+      return `<g transform="translate(41 15) rotate(24)"><path d="M0 0 Q7 -4 9 4 Q2 7 0 0 Z" fill="hsl(130 55% 58%)" stroke="hsl(130 45% 40%)" stroke-width=".8"/><path d="M1 1 L7 3" stroke="hsl(130 45% 40%)" stroke-width=".7"/></g>`;
+    case "spark":
+      return `<path d="M33 9 l-5 8 h4 l-3 7 8 -10 h-4 l3 -5 z" fill="hsl(46 95% 62%)" stroke="hsl(38 80% 46%)" stroke-width=".8"/>`;
+    case "visor":
+      return `<path d="M20 27 q12 -6 24 0" fill="none" stroke="hsl(8 60% 46%)" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="24" r="1.6" fill="hsl(8 80% 60%)"/>`;
+    case "halo":
+      return `<ellipse cx="32" cy="13" rx="9" ry="2.6" fill="none" stroke="hsl(48 95% 72%)" stroke-width="1.8" opacity=".95"/>`;
+    case "wave":
+      return `<path d="M22 15 q3 -4 6 0 t6 0 t6 0" fill="none" stroke="hsl(280 70% 72%)" stroke-width="1.8" stroke-linecap="round"/>`;
+    case "swirl":
+      return `<path d="M32 12 a4 4 0 1 1 -3.5 4.2" fill="none" stroke="hsl(265 70% 74%)" stroke-width="1.8" stroke-linecap="round"/>`;
+    case "crown":
+      return `<path d="M22 15 l2.5 -6 3.5 4 4 -6.5 4 6.5 3.5 -4 2.5 6 z" fill="hsl(46 95% 62%)" stroke="hsl(38 80% 46%)" stroke-width="1" stroke-linejoin="round"/><circle cx="32" cy="7" r="1.3" fill="#fff2c2"/>`;
+    case "scarf":
+      return `<path d="M18 46 Q32 52 46 46 L46 50 Q32 56 18 50 Z" fill="hsl(175 55% 46%)" stroke="hsl(175 45% 34%)" stroke-width=".8"/>`;
+    default:
+      return "";
+  }
+}
+
+/** 유닛 아바타 SVG — 캐릭터 디자인(음영·광택눈·볼터치·소품). unit.art 있으면 그대로. */
 export function unitAvatar(unit: UnitDef, size = 48): string {
   const custom = (unit as UnitDef & { art?: string }).art;
   if (custom) return custom;
 
   const seed = hashStr(unit.id);
-  const rnd = mulberry32(seed);
   const rank = RARITY_RANK[unit.rarity];
-  const hue = ECO_HUES[seed % ECO_HUES.length];
-  const p = palette(hue);
+  const d: Design = UNIT_DESIGN[unit.id] ?? {
+    hue: RARITY_HUE_FALLBACK[seed % RARITY_HUE_FALLBACK.length], shape: "round", eyes: "happy", acc: "none",
+  };
+  const p = palette(d.hue);
   const uid = `u${(seed % 100000).toString(36)}`;
 
-  const cx = 32, cy = 34;
-  const bodyR = 19;
-  const nPts = 6 + rank; // 희귀도↑ → 윤곽 디테일↑
-  const jit = 0.14 + rnd() * 0.08;
-  const body = blobPath(cx, cy, bodyR, nPts, jit, rnd);
-
-  // 섬모(cilia): 희귀도별 개수. 몸을 살아있게.
-  const ciliaN = [3, 4, 6, 8][rank];
-  let cilia = "";
-  for (let i = 0; i < ciliaN; i++) {
-    const a = (i / ciliaN) * Math.PI * 2 + rnd() * 0.5;
-    const x1 = cx + Math.cos(a) * (bodyR - 1);
-    const y1 = cy + Math.sin(a) * (bodyR - 1);
-    const x2 = cx + Math.cos(a) * (bodyR + 4);
-    const y2 = cy + Math.sin(a) * (bodyR + 4);
-    cilia += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${p.deep}" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/>`;
-  }
-
-  // 내부 무늬(핵·소기관 점)
-  let nucleus = "";
-  const dots = 2 + rank;
-  for (let i = 0; i < dots; i++) {
-    const a = rnd() * Math.PI * 2;
-    const rr = rnd() * (bodyR - 8);
-    const dx = cx + Math.cos(a) * rr;
-    const dy = cy + Math.sin(a) * rr + 2;
-    nucleus += `<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="${(1.4 + rnd() * 1.2).toFixed(1)}" fill="${p.light}" opacity="0.55"/>`;
-  }
-
-  // 얼굴 — 항상 순하고 단정하게 (마스코트)
-  const eyeY = cy - 1;
-  const face = `
-    <circle cx="${cx - 5.5}" cy="${eyeY}" r="2.4" fill="${p.ink}"/>
-    <circle cx="${cx + 5.5}" cy="${eyeY}" r="2.4" fill="${p.ink}"/>
-    <circle cx="${cx - 4.7}" cy="${eyeY - 0.9}" r="0.8" fill="#fff" opacity="0.9"/>
-    <circle cx="${cx + 6.3}" cy="${eyeY - 0.9}" r="0.8" fill="#fff" opacity="0.9"/>
-    <path d="M ${cx - 4} ${cy + 5} Q ${cx} ${cy + 8.5} ${cx + 4} ${cy + 5}" fill="none" stroke="${p.ink}" stroke-width="1.5" stroke-linecap="round"/>`;
-
-  // 희귀도 오라: epic=은은한 링, legendary=금빛 후광+왕관 점
+  // 희귀도 오라(뒤): epic=링, legendary=이리데센트 후광+반짝이
   let aura = "";
   if (rank >= 2) {
-    aura += `<path d="${blobPath(cx, cy, bodyR + 5, nPts, jit, mulberry32(seed + 7))}" fill="none" stroke="${p.glow}" stroke-width="1.2" opacity="${rank === 3 ? 0.5 : 0.32}"/>`;
+    aura += `<circle cx="${CX}" cy="${CY}" r="23" fill="none" stroke="${p.glow}" stroke-width="1.4" opacity="${rank === 3 ? 0.55 : 0.32}"/>`;
   }
-  let crown = "";
   if (rank === 3) {
-    // 금빛 후광 + 세 점 (왕관 은유 — 위엄)
-    crown = `<g opacity="0.95">
-      <circle cx="${cx}" cy="${cy - bodyR - 6}" r="1.9" fill="#fbbf24"/>
-      <circle cx="${cx - 7}" cy="${cy - bodyR - 3}" r="1.5" fill="#fcd34d"/>
-      <circle cx="${cx + 7}" cy="${cy - bodyR - 3}" r="1.5" fill="#fcd34d"/>
-    </g>`;
+    aura += `<g fill="#fff2c2">
+      <path d="M12 16 l1 3 3 1 -3 1 -1 3 -1 -3 -3 -1 3 -1 z"/>
+      <path d="M52 40 l.8 2.4 2.4 .8 -2.4 .8 -.8 2.4 -.8 -2.4 -2.4 -.8 2.4 -.8 z"/></g>`;
   }
+
+  const eyes = eyeGroup(d.eyes, p.ink);
+  const acc = accessory(d.acc, p);
 
   return `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="${unit.name}" xmlns="http://www.w3.org/2000/svg">
     <defs>
-      <radialGradient id="${uid}g" cx="38%" cy="32%" r="75%">
+      <radialGradient id="${uid}g" cx="38%" cy="30%" r="80%">
         <stop offset="0%" stop-color="${p.light}"/>
-        <stop offset="70%" stop-color="${p.base}"/>
+        <stop offset="62%" stop-color="${p.base}"/>
         <stop offset="100%" stop-color="${p.deep}"/>
       </radialGradient>
     </defs>
     ${aura}
-    ${cilia}
-    <path d="${body}" fill="url(#${uid}g)" stroke="${p.deep}" stroke-width="1.3"/>
-    ${nucleus}
-    ${face}
-    ${crown}
+    <ellipse cx="${CX}" cy="57" rx="15" ry="3.2" fill="#000" opacity="0.18"/>
+    ${bodyShape(d.shape, `url(#${uid}g)`, p.deep, seed)}
+    <ellipse cx="${CX - 5}" cy="${CY - 6}" rx="8" ry="6" fill="${p.light}" opacity="0.4"/>
+    <path d="M${CX - 11} ${CY - 9} Q${CX} ${CY - 17} ${CX + 12} ${CY - 8}" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity="0.35"/>
+    <ellipse cx="${CX - 9}" cy="${CY + 4}" rx="2.6" ry="1.7" fill="#ff9db0" opacity="0.5"/>
+    <ellipse cx="${CX + 9}" cy="${CY + 4}" rx="2.6" ry="1.7" fill="#ff9db0" opacity="0.5"/>
+    ${eyes}
+    <path d="M${CX - 3.5} ${CY + 6} Q${CX} ${CY + 9} ${CX + 3.5} ${CY + 6}" fill="none" stroke="${p.ink}" stroke-width="1.6" stroke-linecap="round"/>
+    ${acc}
   </svg>`;
 }
 
