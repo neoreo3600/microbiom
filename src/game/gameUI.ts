@@ -17,7 +17,7 @@ import { HOSTS } from "../content/campaign";
 import { BOSSES } from "../content/bosses";
 import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
 import { UNITS, isRelevant } from "../content/units";
-import { unitAvatar, worldBackdrop, bossEmblem } from "./art";
+import { unitAvatar, worldBackdrop, bossEmblem, hostPortrait } from "./art";
 import { sfx, floatText, burst, confetti, initSoundToggle } from "./juice";
 import { tasteAmount, TASTE_COST } from "../engine/taste";
 import type { InspectorActions, InspectorCtx } from "../debug/inspector";
@@ -183,7 +183,10 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
     return `<div class="g-boss">
       ${banner}
       <div class="g-host g-hostrow">
-        <span class="g-emblem" title="${e.disease} — 되돌릴 불균형">${bossEmblem({ id: e.bossId, element: w?.element, behavior: e.gaugeBehavior, size: 52 })}</span>
+        <span class="g-avatar" title="${host ? host.name : ""} — ${e.disease}">
+          ${host ? hostPortrait(host.id, 52) : ""}
+          <span class="g-avatar-badge">${bossEmblem({ id: e.bossId, element: w?.element, behavior: e.gaugeBehavior, size: 26 })}</span>
+        </span>
         <div class="g-hosttxt">
           <div><b>${host ? host.name : ""}</b> ${host ? `(${host.age})` : ""} <span class="g-muted">· 숙주 ${s.campaign.hostIndex + 1}/${HOSTS.length}</span></div>
           <div class="g-muted">${e.disease} · ${worldStr}${host ? ` · "${host.bio}"` : ""}</div>
@@ -407,6 +410,7 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
     const gain = C.genesGain(s);
     const healedCount = BOSSES.filter((b) => s.collection.has(`boss:${b.id}`)).length;
     return `<div class="g-overlay"><div class="g-result">
+      ${host ? `<div class="g-result-portrait">${hostPortrait(host.id, 92)}</div>` : ""}
       <div class="g-result-t">🟢 항상성 복원</div>
       <div class="g-result-cut">${host ? `${host.name} — "${host.recoveryCut}"` : ""}</div>
       <div class="g-result-frame">증상을 없앤 게 아니라, 뿌리를 정비해 <b>몸이 스스로 균형을 되찾기 시작</b>했다.</div>
@@ -452,6 +456,9 @@ function injectStyles() {
   .g-hostrow { display:flex; align-items:center; gap:12px; }
   .g-hosttxt { min-width:0; padding-right:44px; }
   .g-emblem { flex:0 0 auto; width:54px; height:54px; filter:drop-shadow(0 2px 5px rgba(0,0,0,.4)); }
+  .g-avatar { flex:0 0 auto; position:relative; width:52px; height:52px; filter:drop-shadow(0 2px 5px rgba(0,0,0,.4)); }
+  .g-avatar-badge { position:absolute; right:-5px; bottom:-5px; width:26px; height:26px; filter:drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+  .g-result-portrait { display:flex; justify-content:center; margin-bottom:10px; filter:drop-shadow(0 4px 12px rgba(0,0,0,.4)); animation:gpop .4s cubic-bezier(.2,.9,.25,1); }
   .g-host b { font-family:var(--font-display); color:var(--ink); font-size:17px; font-weight:400; letter-spacing:.5px; }
   .g-stepper { display:flex; align-items:center; justify-content:center; gap:3px; margin:14px 0; }
   .g-step { font-size:12px; padding:5px 12px; border-radius:var(--pill); color:var(--ink-dim); background:var(--surface-2); transition:all .25s; }

@@ -429,3 +429,62 @@ export function worldBackdrop(el: Element | undefined): string {
     <rect x="0" y="0" width="${VB.w}" height="${VB.h}" fill="url(#${gid}_vig)"/>
   </svg>`;
 }
+
+// ── 숙주(사람) 초상 ─────────────────────────────────────────────
+// §0 비협상: 증상 전시 없음. 실루엣+표정+따뜻함으로 존엄과 '회복의 방향'만.
+//   부드럽고 희망 어린 표정. 숙주별 머리·색으로만 구분(고정관념 최소화).
+//   교체 구조: 나중에 손그림/일러스트로 무손실 교체 가능.
+
+interface HostD { bg: number; hair: string; hairColor: string; cloth: string; }
+const HOST_DESIGN: Record<string, HostD> = {
+  host_kim: { bg: 205, hair: "short", hairColor: "#7c7a80", cloth: "#5b6b8a" },
+  host_lee: { bg: 344, hair: "shoulder", hairColor: "#40332c", cloth: "#c97b8a" },
+  host_park: { bg: 262, hair: "cropped", hairColor: "#2c2630", cloth: "#6a5b8a" },
+  host_choi: { bg: 38, hair: "short", hairColor: "#35291d", cloth: "#8a7350" },
+  host_yoon: { bg: 188, hair: "long", hairColor: "#241f2a", cloth: "#5aa0a8" },
+};
+const SKIN = "#f0c9a8", SKIN_SH = "#e0b291";
+
+function hairShape(style: string, color: string): string {
+  const top = `<path d="M20 27 Q20 13 32 13 Q44 13 44 27 Q44 20 32 19 Q20 20 20 27 Z" fill="${color}"/>`;
+  switch (style) {
+    case "long":
+      return `<path d="M18 26 Q18 12 32 12 Q46 12 46 26 L46 44 Q42 40 42 30 Q40 21 32 21 Q24 21 22 30 Q22 40 18 44 Z" fill="${color}"/>`;
+    case "shoulder":
+      return `<path d="M19 26 Q19 12 32 12 Q45 12 45 26 L45 38 Q42 34 42 29 Q40 21 32 21 Q24 21 22 29 Q22 34 19 38 Z" fill="${color}"/>`;
+    case "cropped":
+      return `<path d="M21 26 Q21 14 32 14 Q43 14 43 26 Q43 21 32 20 Q21 21 21 26 Z" fill="${color}"/>`;
+    default:
+      return top;
+  }
+}
+
+/** 숙주 초상 SVG. 따뜻하고 존엄하게(§0). host.portrait 있으면 그대로. */
+export function hostPortrait(hostId: string, size = 54): string {
+  const d = HOST_DESIGN[hostId] ?? { bg: 210, hair: "short", hairColor: "#3a3340", cloth: "#5b6b8a" };
+  const uid = `h_${hostId}`;
+  return `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="숙주 초상" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="${uid}bg" cx="42%" cy="34%" r="72%">
+        <stop offset="0%" stop-color="hsl(${d.bg} 40% 40%)"/>
+        <stop offset="100%" stop-color="hsl(${d.bg} 44% 22%)"/>
+      </radialGradient>
+      <clipPath id="${uid}c"><circle cx="32" cy="32" r="30"/></clipPath>
+    </defs>
+    <circle cx="32" cy="34" r="31" fill="#000" opacity="0.18"/>
+    <circle cx="32" cy="32" r="30" fill="url(#${uid}bg)"/>
+    <g clip-path="url(#${uid}c)">
+      <path d="M14 60 Q14 45 32 45 Q50 45 50 60 Z" fill="${d.cloth}"/>
+      <rect x="28.5" y="37" width="7" height="8" rx="3" fill="${SKIN_SH}"/>
+      ${hairShape(d.hair, d.hairColor)}
+      <ellipse cx="32" cy="29" rx="10.5" ry="11.5" fill="${SKIN}"/>
+      <path d="M22 26 Q22 15 32 15 Q42 15 42 26 Q40 20 32 20 Q24 20 22 26 Z" fill="${d.hairColor}"/>
+      <ellipse cx="27.5" cy="33" rx="2" ry="1.4" fill="#e79" opacity="0.35"/>
+      <ellipse cx="36.5" cy="33" rx="2" ry="1.4" fill="#e79" opacity="0.35"/>
+      <path d="M25 29 Q27 27.4 29 29" fill="none" stroke="#3a2f2a" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M35 29 Q37 27.4 39 29" fill="none" stroke="#3a2f2a" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M29 35 Q32 37.6 35 35" fill="none" stroke="#b5745a" stroke-width="1.4" stroke-linecap="round"/>
+    </g>
+    <circle cx="32" cy="32" r="30" fill="none" stroke="hsl(${d.bg} 45% 55%)" stroke-width="2" opacity="0.5"/>
+  </svg>`;
+}
