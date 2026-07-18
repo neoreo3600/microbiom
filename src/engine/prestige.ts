@@ -29,9 +29,9 @@ export function doPrestige(
 ): Decimal {
   const gain = layer.gainFormula(s);
 
-  // 1) 진행도를 통화로 변환
+  // 1) 진행도를 통화로 변환 (= 다음 사람에게 이주)
   addBalance(s, layer.currency, gain);
-  s.prestige.count += 1;
+  s.prestige.migrations += 1;
 
   // 2) resetScope 적용
   for (const token of layer.resetScope) {

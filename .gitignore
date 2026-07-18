@@ -3,3 +3,6 @@ dist/
 *.log
 .DS_Store
 .vite/
+# Capacitor 네이티브 프로젝트 (cap add 로 각 개발 머신에서 생성)
+android/
+ios/

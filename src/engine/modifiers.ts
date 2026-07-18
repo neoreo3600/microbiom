@@ -8,7 +8,7 @@
 // 완전히 결정론적으로 고정한 것이다.
 
 import Decimal from "break_infinity.js";
-import type { GameState, Generator, ModScope, Modifier } from "./state";
+import { meterHealthMult, type GameState, type Generator, type ModScope, type Modifier } from "./state";
 
 /** target 이 대상 id 와 일치하거나 글로벌("*")이면 true */
 function hitsTarget(mod: Modifier, id: string): boolean {
@@ -70,7 +70,8 @@ export function resourceRate(s: GameState, resourceId: string, now: number): Dec
     if (g.produces === resourceId) sum = sum.add(generatorRate(s, g, now));
   }
   const { add, mult } = collect(s, now, "globalRate", resourceId);
-  return sum.add(add).mul(mult);
+  // 생태계 건강도(뿌리노드→미터) 를 마지막 배수로. 무너진 몸은 자원을 못 만든다.
+  return sum.add(add).mul(mult).mul(meterHealthMult(s));
 }
 
 /**

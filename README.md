@@ -1,11 +1,16 @@
-# Idle Growth Engine — 방치형 성장엔진 코어
+# 《속나라》 — 방치형 치유 생태계 게임 · 엔진 코어 (P0)
 
-스토리·세계관·캐릭터·아트·애니메이션·사운드·연출을 **전부 배제**하고,
-오직 **"수치가 커지는 엔진"** 과 **"그 수치를 조작하는 요소"** 만 구현한 방치형(idle) 게임 코어.
+한 사람의 몸속 생태계("속나라")를 재건해 회복시키고, 다음 사람에게로 **이주**하는 방치형 성장 게임의
+데이터 주도 엔진 코어. 5개 프리미티브 성장엔진 위에 **4대 미터(숲·물길·온기·빛) + 염증/해독 +
+뿌리노드(마이크로바이옴) + 오행 월드 + 보스(질병)** 도메인을 얹었다.
+
+> **프레이밍(비협상):** 치료 시뮬레이션이 아니라 몸속 생태계를 정비·체험하는 판타지. 승리는 "완치"가
+> 아니라 "생태계 균형(항상성) 회복"의 은유다. **실제 질병은 의료진의 진단·치료가 필요하며, 본 게임은
+> 의학적 조언이 아니다.** 특정 질병이 게임/생활습관만으로 낫는다는 표현·의료 대체 서사·자해/위기 묘사 금지.
 
 가장 중요한 원칙: **기능을 만들지 말고 프리미티브를 만든다.**
-진화 · 업그레이드 · 돌연변이 · 환생 · 광고 부스터 · 오프라인 보상은
-전부 아래 5개 프리미티브의 인스턴스이며, 특수 케이스 코드 없이 **데이터(config)만으로** 표현된다.
+진화·업그레이드·유익균 뽑기·이주·부스터·오프라인·보스는 전부 아래 5개 프리미티브의 인스턴스이며,
+신규 질병/보스는 **엔진 코드 변경 없이 config만 추가**해 표현된다.
 
 ## 실행
 
@@ -41,25 +46,137 @@ npm run build      # 타입검사 + 프로덕션 빌드
 
 → 오른쪽 열은 전부 "Modifier" 거나 "Modifier 를 낳는 전환". **새 기능 = 새 config, not 새 코드.**
 
+## 《속나라》 도메인 레이어 (P0)
+
+### 4대 조작 미터 — 장수온심(腸水溫心)
+
+플레이어가 매 순간 굴리는 다이얼. 각 미터는 0..1 이며 뿌리노드·염증·해독·되먹임 압력의 적분으로 움직인다.
+
+| 미터 | 표면 | 내부 키 | 다스리는 것 |
+|---|---|---|---|
+| 숲(기르다) | 영양·미생물 | `gut` | 유익균·다양성·SCFA |
+| 물길(흐르다) | 수·미네랄 | `water` | 순환·체액·전해질 |
+| 온기(지피다) | 호르몬·체온 | `warmth` | 대사·효소·면역 (병에 따라 ↑/국소↓) |
+| 빛(밝히다) | 마음·의식 | `mind` | 자율신경·파장. 부정→긍정 전환 |
+
+보조 2: `inflammation`(오염, 크로스-빌런 — 대부분 보스가 이걸로 self-regen) · `detox`(해독 부담).
+
+### 뿌리노드(마이크로바이옴)와 만류귀종 종속
+
+- **뿌리노드**의 `diversity`(다양성)가 내구도=방어력. 4출력(면역·신경전달·SCFA·해독)을 전 미터에 배급.
+- **종속 규칙(구현):** `boss.startMeters ∝ f(diversity)` — 뿌리가 튼튼할수록 보스가 **덜 무너진 채** 시작하고
+  염증 regen 이 약해진다. → **"장부터"가 잔소리가 아니라 수학적으로 유리한 전략** (`engine/rootnode.ts`).
+- **되먹임 고리:** 장-뇌축(장↓→세로토닌↓→빛↓), 빛↓→코르티솔↑→염증↑ (`engine/meters.ts`).
+- 생태계 사슬: **뿌리노드 → 미터 → 생산** (미터 평균이 자원 생산율의 마지막 배수, `meterHealthMult`).
+
+### 보스(질병) — 순환→정화→재생, 항상성 승리
+
+보스는 미터 벡터 + 3페이즈 게이트 + 승리 밴드의 **데이터 한 블록**(`content/bosses.ts`). 승리는 "죽이기"가
+아니라 **항상성 복원**(전 미터 ≥ 밴드 + 염증 낮음 + 질병 게이지 안정). 페이즈 게이트는 문자열
+(`"warmth>=0.6 && water>=0.6"`)로 기술하고 엔진(`boss.evalGate`)이 직접 평가한다.
+
+**4대 함정 아키타입** — 나머지 40+ 질병의 템플릿. 각기 다른 "틀리는 직관"과 시그니처 기믹을 가진다.
+
+| 보스 | 아키타입 | 틀리는 직관 | 시그니처 기믹 |
+|---|---|---|---|
+| `diabetes_T2` (토·비위) | 과잉형 | "더 만들면 이긴다" | 혈당 게이지(fill) 굶기기 · 온기↑(보) · 인슐린저항 디버프 |
+| `autoimmune_RA` (목·간담) | 공격형 | "때리면 이긴다" | 공격=자해(`attackRaisesGauge`) · 국소 온기↓(사·淸熱, `heatPolarity -1`) |
+| `depression` (금·장-뇌축) | 강요형 | "긍정 강요하면" | **식(識) 잠금**(`mindLock`) — 지반(장·수·열+염증) 회복 전엔 빛 cap |
+| `colon_cancer` (토·대장) | 은신형 | — | **연료·감시 종양**(`stealthGrow`) — 염증(연료)로 자라고 물길(NK감시)로만 억제, 배수 불가 |
+
+- **허실 분기:** 당뇨는 온기↑(보), 자가면역은 온기↓(사·淸熱) — **같은 미터, 정반대 방향**을 `heatPolarity` 하나로.
+- **식(識) 잠금:** 우울은 몸(지반)을 먼저 고쳐야 마음이 열림 → "그냥 긍정"이 규칙적으로 불가능.
+- **은신형:** 암은 "죽이기"가 아니라 환경 교정(연료 차단+감시 유지)으로 **관해**(완치 단정 아님, §0/§8 민감).
+
+**밸런스 스냅샷** (`npm run playthrough` — 올바른 순·정·재로 완주 시뮬, 회귀 가드):
+
+| 보스 | 완주(iter) | 성격 |
+|---|---|---|
+| diabetes_T2 | 14 | 교육형 |
+| depression | 14 | 식 잠금 게이팅 |
+| colon_cancer | 37 | 은신형(지속 감시) |
+| autoimmune_RA | 47 | 공격형(淸熱 후 회복, 최난) |
+
+> naive "다 눌러" 플레이는 자가면역을 못 깬다(온기 과냉각) — 허실 분기가 실제로 작동한다는 증거.
+
+### 보스/게이지 데이터 필드 레퍼런스
+
+`Boss`(`content/bosses.ts`)의 튜닝 필드 — 전부 선택(optional), 엔진 코드 변경 없이 config로:
+
+| 필드 | 뜻 |
+|---|---|
+| `gauge.behavior` | `fill`(차오름: 혈당·과활성·안개) · `drain`(빠짐) · `stealthGrow`(연료로 자라고 감시로 억제: 종양) |
+| `gauge.fill` / `stableBand` / `start` | 초당 변화량 · 승리 안정 상한 · 시작 게이지값(암=이미 존재) |
+| `heatPolarity` | 순환 시 온기 방향 `+1`(보) / `-1`(사·淸熱) — 허실 분기 |
+| `attackRaisesGauge` | 공격(딜) 시 게이지 상승량 — 역설 보스(공격=자해) |
+| `mindLock` | `{foundationMeters, foundationInflammation, cap}` — 지반 회복 전 빛(mind) 캡(우울) |
+| `debuffs[]` | 시작 시 부여되는 디버프 modifier(인슐린저항 등) |
+| `clearReward` | 승리 시 부여되는 영구 '치유 지혜' 배지(`heal:<id>`, 이주해도 유지) |
+| `archetype` | 상속 태그(예: `cancer_base`) — `makeCancer()`로 템플릿 확장 |
+
+그 밖의 데이터 계층: `content/campaign.ts`(숙주·이주 루프), `content/events.ts`(숙주 날씨), `content/worlds.ts`
+(오행 6월드+오미 효과), `content/units.ts`(히어로 유닛 로스터). 상태에는 `meters`·`inflammation`·`detox`·
+`tasteResources`·`rootnode`·`encounter`·`campaign`이 추가됐고 전부 세이브/로드 무손실이다.
+
+### 구현된 게임 루프 (P0–M3)
+
+- **성장·이주:** 5프리미티브 엔진 · 숙주 캠페인(클리어→이주→다음 숙주) · 승리 시 영구 '치유 지혜' 배지 · 리절트 카드
+- **보스:** 4대 아키타입(당뇨·자가면역·우울·암) · 순·정·재 게이팅 · 항상성 승리 · `npm run playthrough` 밸런스 가드
+- **생태계:** 미터4·염증·해독·뿌리노드 · 만류귀종 종속(뿌리 재건→하류 완화) · 되먹임 고리 실시간 시각화 · 트리맵
+- **콘텐츠:** 오행 6월드 · 오미(五味) 자원 경제 · 히어로 유닛 로스터 · 숙주 날씨 이벤트
+- **윤리:** §0 프레이밍 상시 디스클레이머 + 민감 보스(우울·암) 강조 배너
+- **M4(진행 중):** 웹+Capacitor 하이브리드 셸 + 리워드 광고 추상화(웹=스텁 / 네이티브=AdMob)
+
+## 모바일 빌드 (Capacitor + AdMob)
+
+엔진이 순수 TS라 **웹 플레이는 지금 그대로 되고**, 네이티브 껍데기(Capacitor)만 씌우면 AdMob 리워드 광고가 붙는다.
+광고는 `src/platform/ads.ts` 추상화 뒤에 있어, 웹에선 스텁(즉시 보상)·네이티브에선 AdMob 으로 **자동 전환**된다.
+
+```bash
+# 네이티브(Android) 준비 — Android Studio 필요
+npm i @capacitor-community/admob      # 광고 플러그인 (네이티브에서만 로드됨)
+npx cap add android                   # android/ 네이티브 프로젝트 생성 (gitignore됨)
+npm run cap:sync                      # 웹 빌드(dist) → 네이티브로 동기화
+npx cap open android                  # Android Studio 에서 빌드·실행
+```
+
+- **광고 단위 ID:** `src/platform/ads.ts` 의 `TEST_REWARDED_AD_ID`(Google 공식 테스트 ID)를 실제 AdMob ID 로 교체하고, AndroidManifest 에 AdMob 앱 ID 를 추가한다.
+- **리워드 지점(§9):** `AdPlacement` = `offlineBoost`/`booster`/`gacha`/`crisis`/`meditation`. 현재 부스터·오프라인 ×N 버튼이 광고 게이트를 통과한다.
+- **개발 중 실기기 라이브 리로드:** `capacitor.config.ts` 의 `server.url` 을 dev 서버로 켜면 된다.
+
+> **iOS·릴리스 서명·스토어 심사·체크리스트 포함 전체 절차 →** [`docs/네이티브_빌드_가이드.md`](docs/네이티브_빌드_가이드.md)
+
 ## 폴더 구조 (셋은 서로 독립)
 
 ```
 src/
   engine/          // 순수 로직 (framework·content·debug 무관)
-    state.ts       // GameState 타입 + 잔액 헬퍼
-    modifiers.ts   // modifier 스택 → effective rate/cost 계산
+    state.ts       // GameState 타입 + 도메인 타입 + 잔액/미터 헬퍼
+    modifiers.ts   // modifier 스택 → effective rate/cost/offline 계산 (+ 미터 건강도 결합)
     cost.ts        // CostCurve (exp/lin/poly)
     actions.ts     // 진화/구매/뽑기/부스터 (Modifier 를 만드는 액션)
-    tick.ts        // 틱 루프: 생산 누적 · 임시 modifier 만료 · unlock 평가
+    meters.ts      // 미터·염증·해독·게이지 연속 시뮬레이션 + 되먹임 고리
+    rootnode.ts    // 뿌리노드 재건 + 만류귀종 종속 규칙 (startMeters/regen)
+    boss.ts        // 인카운터 시작·페이즈 게이트 평가·항상성 승리 + 순·정·재 손길
+    events.ts      // 숙주 이벤트(날씨) 적용 — 즉시 효과 + 임시 modifier
+    taste.ts       // 오미(五味) 자원 축적/소비 (M2)
+    tick.ts        // 틱 루프: 생산 누적 · 생태계 스텝 · 페이즈 평가 · 오미 축적 · 만료
     offline.ts     // 오프라인 적분 (cap 포함)
-    prestige.ts    // 리셋 + 변환
+    prestige.ts    // 리셋 + 변환 (= 다음 사람에게 이주)
     save.ts        // 직렬화 / 역직렬화 / localStorage
   content/
-    config.ts      // ★ 데이터 주도 콘텐츠 (여기만 고치면 콘텐츠 추가됨)
+    config.ts      // ★ 성장엔진 콘텐츠 (미터/뿌리노드 초기값·업그레이드·뽑기·이주 트리)
+    bosses.ts      // ★ 보스(질병) 데이터 — 여기만 고치면 새 보스가 붙는다 (4대 아키타입)
+    campaign.ts    // ★ 숙주(사람) 캠페인 — 이름·사연·회복 컷 + 이주 순서
+    events.ts      // ★ 숙주 일상 이벤트(날씨) 데이터 — 야식·스트레스·수면…
+    worlds.ts      // ★ 오행 6월드 + 오미(五味) 효과 데이터
+    units.ts       // ★ 히어로 유닛(유익균·Treg 등) 로스터 (M2)
   debug/
-    inspector.ts   // 숫자 대시보드 + 트리거 버튼 + EP 성장 그래프
+    inspector.ts   // 미터·뿌리노드·보스전·미리보기·날씨·유닛·오미·리절트·트리맵·되먹임 대시보드
     format.ts      // 큰 수 포매터
   main.ts          // engine + content + inspector 조립
+scripts/
+  playthrough.ts   // `npm run playthrough` — 보스 완주 밸런스 회귀 가드
 ```
 
 ## 공통 공식 (계산 순서 고정)
@@ -118,24 +235,65 @@ resource total = (Σ generator rate + Σadd:globalRate) × Πmult:globalRate
 같은 방식으로 **새 tier / 돌연변이 / 프레스티지 영구 트리 / 부스터** 도 각 배열(`TIER`, `MUTATIONS`,
 `PRESTIGE.permanentUpgrades`, `BOOSTERS`)에 데이터만 추가하면 된다.
 
+### 새 보스(질병)도 config 한 블록 (engine 0줄)
+
+`src/content/bosses.ts` 의 `BOSSES` 배열에 `Boss` 하나를 추가하면 인스펙터에 시작 버튼·미터 벡터·
+페이즈 게이트·승리 판정이 전부 자동으로 붙는다. 게이트는 `gut/water/warmth/mind/inflammation/gauge/diversity`
+식별자로 쓴 문자열이면 엔진이 그대로 평가한다.
+
+```ts
+export const NAFLD: Boss = {
+  id: "nafld", disease: "지방간", world: "wood", organ: "간담",
+  emotion: "분노", tasteResource: "sour",
+  startMeters: { gut: 0.45, water: 0.4, warmth: 0.45, mind: 0.5 },
+  detoxBurden: "high",
+  inflammation: { value: 0.6, regen: 0.04 },
+  gauge: { id: "간지방", behavior: "fill", drivers: ["과당"], overflow: "-allMeters", fill: 0.02, stableBand: 0.5 },
+  heatPolarity: 1,
+  phases: {
+    circulation: { requires: "warmth>=0.55 && water>=0.55" },
+    purification: { requires: "detox<=0.4 && inflammation<=0.4" },
+    regeneration: { requires: "gut>=0.7 && mind>=0.6" },
+  },
+  victory: { band: "간지방안정", meters: 0.7, inflammationMax: 0.3 },
+};
+// BOSSES 배열에 NAFLD 추가 → 끝. 엔진 코드 변경 없음.
+```
+
 ## 디버그 인스펙터
 
 `npm run dev` → 브라우저. 예쁠 필요 없이 **밸런스 감 잡기** 만 목적.
 
-- **실시간:** 각 resource 값·초당 생산량, 활성 modifier 목록(source/scope/value/남은시간), prestige 상태, 도감 진행률
-- **트리거 버튼:** 진화 · 업그레이드 · 돌연변이 뽑기 · 환생 · 부스터(광고 스텁) · 오프라인 ×N(스텁) · 세이브 · 로드 · +시간 스킵
-- **그래프:** 시간에 따른 EP 성장 곡선(log10)
+- **실시간:** 미터4(숲·물길·온기·빛) 바 · 염증 · 해독 · 뿌리노드(다양성+4출력+하류난이도) · 보스 페이즈·게이지·게이트 상태 · 활성 modifier · 도감/이주
+- **트리거:** [순환][정화][재생][공격/딜] 손길 · 보스 시작/이탈 · 진화·업그레이드·뽑기·이주 · 부스터·오프라인 ×N · 세이브/로드 · +시간 스킵
+- **그래프:** 미터 평균(초록) + 염증(빨강) 추이 = 난이도 곡선
+- **만류귀종 트리:** 뿌리→관문→질병 연쇄 + 되먹임 고리 표시
 
 ## 수용 기준 달성
 
+### 성장엔진 코어 (Appendix)
+
 | # | 기준 | 달성 |
 |---|---|---|
-| 1 | `content/config.ts` 만 고쳐 콘텐츠 추가 시 engine 변경 0줄 | 위 예시대로 config 배열 추가만으로 동작 |
+| 1 | `content/config.ts` 만 고쳐 콘텐츠 추가 시 engine 변경 0줄 | config 배열 추가만으로 동작 |
 | 2 | `1e100+` 정상 표시·계산 | 전 계산 `Decimal`, 포매터는 mantissa/exponent 표시 |
 | 3 | +8h 스킵 → cap 적용 오프라인 보상 | `claimOffline` 이 `min(elapsed, cap)` 적용 |
 | 4 | 임시 부스터 만료 시 생산율 정확 원복 | 계산 순서 고정 + `expiresAt` 만료 제거 |
-| 5 | 환생 후 영구 modifier 로 재도달 가속 | `resetScope` 가 mutation/prestige/setBonus 는 보존 |
+| 5 | 이주 후 영구 modifier 로 재도달 가속 | `resetScope` 가 mutation/prestige/setBonus 보존 |
 | 6 | 세이브→로드 무손실 | Decimal/Set 변환 + condition 재부착 + level 파생 |
+
+### 《속나라》 P0 (핸드오프 §10)
+
+| # | 기준 | 달성 |
+|---|---|---|
+| P0-1 | config만으로 신규 보스 추가 시 엔진 0줄 | `content/bosses.ts` 배열 추가만으로 (위 예시) |
+| P0-2 | 큰 수 정상 · 세이브/로드 무손실 | 미터·염증·해독·뿌리노드·인카운터 전부 무손실 복원 |
+| P1-1 | 뿌리 재건 시 하류 난이도↓ 수치 확인 | `computeStartMeters`/`adjustedInflammationRegen` — diversity↑ → startMeters↑·regen↓ |
+| P1-2 | 순·정·재 페이즈 게이팅 작동 | `boss.evalGate` 문자열 게이트로 순환→정화→재생→항상성 승리 |
+| — | 허실 분기(같은 미터 정반대) | `heatPolarity` — 당뇨 온기↑ / 자가면역 온기↓(淸熱) |
+
+> 위 항목은 실제 엔진 코드를 esbuild 번들로 구동한 검증 하니스(32개 단언)와 Chromium 실 브라우저
+> 구동(9개 체크: 패널 렌더·보스 시작·순정재 손길 반응·세이브/로드·콘솔 에러 0)으로 확인했다.
 
 ## 비목표 (구현하지 않음)
 

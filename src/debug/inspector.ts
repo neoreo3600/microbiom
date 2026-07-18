@@ -1,23 +1,37 @@
 // debug/inspector.ts
-// 순수 계측 대시보드. 아트/연출 없음. 오직 "밸런스 감 잡기".
-//   - 실시간 숫자 표시 (자원/생산율/활성 modifier/prestige/도감)
-//   - 트리거 버튼 (진화/업그레이드/뽑기/환생/부스터/오프라인/세이브/로드/시간스킵)
-//   - 그래프 (EP 성장 곡선)
+// 순수 계측 대시보드 (아트 없음). 《속나라》 P0: 미터4·염증·해독·뿌리노드 실시간값 +
+// [순환][정화][재생] 손길 + 보스전 + [이주][+시간][세이브/로드] + 난이도 그래프 + 만류귀종 트리.
 
 import Decimal from "break_infinity.js";
-import type { GameState } from "../engine/state";
-import { generatorRate, resourceRate } from "../engine/modifiers";
-import { nextCost } from "../engine/actions";
+import {
+  clampMeter,
+  meterAverage,
+  type GameState,
+  type MeterKey,
+} from "../engine/state";
+import { generatorRate, resourceRate, applyCostModifiers } from "../engine/modifiers";
+import { nextCost, unitCount } from "../engine/actions";
 import { computeCost } from "../engine/cost";
-import { applyCostModifiers } from "../engine/modifiers";
+import { downstreamDifficulty, computeStartMeters, adjustedInflammationRegen } from "../engine/rootnode";
+import { evalGate, victoryMet } from "../engine/boss";
+import { mindFoundationMet, feedbackLoops } from "../engine/meters";
 import * as C from "../content/config";
+import { BOSSES, CHAIN_TREE } from "../content/bosses";
+import { HOSTS } from "../content/campaign";
+import { HOST_EVENTS, eventsForBoss } from "../content/events";
+import { WORLDS, worldById, ELEMENT_LABEL, tasteLabel, TASTE_EFFECT_DESC } from "../content/worlds";
+import { UNITS, isRelevant } from "../content/units";
+import { tasteAmount, TASTE_COST } from "../engine/taste";
+import { adPlatformLabel } from "../platform/ads";
 import { fmt, fmtRate, fmtRemain, fmtDuration } from "./format";
 
 export interface InspectorActions {
+  // 성장엔진
   evolve(): void;
   buyUpgrade(id: string): void;
   buyPermanent(id: string): void;
   draw(): void;
+  drawHero(): void;
   prestige(): void;
   booster(id: string): void;
   offlineAd(): void;
@@ -25,6 +39,18 @@ export interface InspectorActions {
   save(): void;
   load(): void;
   hardReset(): void;
+  // 보스전 & 순·정·재
+  startBoss(id: string): void;
+  leaveBoss(): void;
+  circulate(): void;
+  purify(): void;
+  regenerate(): void;
+  attack(): void;
+  crisis(): void;
+  meditation(): void;
+  migrate(): void;
+  hostEvent(id: string): void;
+  useTaste(): void;
 }
 
 export interface InspectorCtx {
@@ -33,35 +59,56 @@ export interface InspectorCtx {
   actions: InspectorActions;
 }
 
+// 미터 표면 이름·색
+const METER_META: Record<MeterKey, { label: string; color: string }> = {
+  gut: { label: "숲(腸)", color: "#4ade80" },
+  water: { label: "물길(水)", color: "#38bdf8" },
+  warmth: { label: "온기(熱)", color: "#fb923c" },
+  mind: { label: "빛(識)", color: "#c084fc" },
+};
+const PHASE_LABEL: Record<string, string> = {
+  circulation: "순환",
+  purification: "정화",
+  regeneration: "재생",
+  won: "승리(항상성 복원)",
+};
+
 interface Sample {
   t: number;
-  ep: Decimal;
+  meterAvg: number;
+  inflammation: number;
 }
 
-export function createInspector(root: HTMLElement, ctx: InspectorActions extends never ? never : InspectorCtx) {
+export function createInspector(root: HTMLElement, ctx: InspectorCtx) {
   root.innerHTML = SHELL;
   injectStyles();
 
   const $ = (sel: string) => root.querySelector(sel) as HTMLElement;
   const dash = $("#dash");
-  const canvas = $("#epGraph") as unknown as HTMLCanvasElement;
+  const canvas = $("#graph") as unknown as HTMLCanvasElement;
   const skipInput = () => ($("#skipHours") as unknown as HTMLInputElement);
 
   const history: Sample[] = [];
   const MAX_HISTORY = 600;
+  const eventLog: { label: string; kind: "bad" | "good"; at: number }[] = [];
+  function logEvent(id: string) {
+    const ev = HOST_EVENTS.find((e) => e.id === id);
+    if (!ev) return;
+    eventLog.unshift({ label: ev.label, kind: ev.kind, at: ctx.now() });
+    if (eventLog.length > 6) eventLog.pop();
+  }
 
-  // ── 이벤트 위임 ──────────────────────────────────────────────
   root.addEventListener("click", (e) => {
     const el = (e.target as HTMLElement).closest("[data-action]") as HTMLElement | null;
     if (!el) return;
-    const action = el.dataset.action!;
-    const id = el.dataset.id;
     const a = ctx.actions;
-    switch (action) {
+    const id = el.dataset.id;
+    switch (el.dataset.action) {
       case "evolve": a.evolve(); break;
       case "buyUpgrade": a.buyUpgrade(id!); break;
       case "buyPermanent": a.buyPermanent(id!); break;
       case "draw": a.draw(); break;
+      case "drawHero": a.drawHero(); break;
       case "prestige": a.prestige(); break;
       case "booster": a.booster(id!); break;
       case "offlineAd": a.offlineAd(); break;
@@ -69,235 +116,483 @@ export function createInspector(root: HTMLElement, ctx: InspectorActions extends
       case "save": a.save(); break;
       case "load": a.load(); break;
       case "reset": if (confirm("전체 초기화? (저장 삭제)")) a.hardReset(); break;
+      case "startBoss": a.startBoss(id!); break;
+      case "leaveBoss": a.leaveBoss(); break;
+      case "circulate": a.circulate(); break;
+      case "purify": a.purify(); break;
+      case "regenerate": a.regenerate(); break;
+      case "attack": a.attack(); break;
+      case "crisis": a.crisis(); break;
+      case "meditation": a.meditation(); break;
+      case "migrate": a.migrate(); break;
+      case "hostEvent": logEvent(id!); a.hostEvent(id!); break;
+      case "useTaste": a.useTaste(); break;
+      case "randomEvent": {
+        const list = eventsForBoss(ctx.getState().encounter?.bossId);
+        if (list.length) {
+          const pick = list[Math.floor(Math.random() * list.length)];
+          logEvent(pick.id);
+          a.hostEvent(pick.id);
+        }
+        break;
+      }
     }
     render();
   });
 
-  // ── 렌더 ─────────────────────────────────────────────────────
+  function meterCtx(s: GameState): Record<string, number> {
+    return {
+      gut: s.meters.gut, water: s.meters.water, warmth: s.meters.warmth, mind: s.meters.mind,
+      inflammation: s.inflammation, detox: s.detox,
+      gauge: s.encounter?.gauge ?? 0, diversity: s.rootnode.diversity,
+    };
+  }
+
   function render() {
     const s = ctx.getState();
     const now = ctx.now();
-
     const ep = s.resources[C.RESOURCE_IDS.EP].amount;
     const epRate = resourceRate(s, C.RESOURCE_IDS.EP, now);
-    const genes = s.prestige.currency[C.PRESTIGE_CURRENCY] ?? new Decimal(0);
-    const lifeEP = s.lifetime[C.RESOURCE_IDS.EP] ?? new Decimal(0);
-    const gen = s.generators[C.MAIN_GENERATOR_ID];
-    const prestigeGain = C.PRESTIGE.gainFormula(s);
+    const genes = s.prestige.genes[C.PRESTIGE_CURRENCY] ?? new Decimal(0);
 
     dash.innerHTML = [
-      section("자원 / 생산", `
-        <div class="grid">
-          ${stat("EP", fmt(ep))}
-          ${stat("EP/s", fmtRate(epRate))}
-          ${stat("genes", fmt(genes))}
-          ${stat("lifetime EP", fmt(lifeEP))}
-          ${stat("환생 횟수", String(s.prestige.count))}
-        </div>`),
-
-      section("진화 (Generator tier)", `
-        <div class="row">
-          <span>${gen.id} · tier <b>${gen.tier}/${gen.maxTier}</b> · rate ${fmtRate(generatorRate(s, gen, now))}</span>
-        </div>
-        <div class="row">
-          ${evolveButton(s, now)}
-        </div>`),
-
-      section("업그레이드 (EP)", upgradesHtml(s, now)),
-
-      section(`영구 트리 (genes) · 보유 ${fmt(genes)}`, permanentHtml(s, now)),
-
-      section("돌연변이 (가챠) / 도감", mutationHtml(s)),
-
-      section("부스터 / 오프라인 (광고 스텁)", `
-        <div class="row wrap">
-          ${C.BOOSTERS.map((b) =>
-            `<button data-action="booster" data-id="${b.id}">${b.label}</button>`
-          ).join("")}
-        </div>
-        <div class="row wrap">
-          <button data-action="offlineAd">오프라인 ×${fmt(C.OFFLINE_AD.grants.value)} 준비 (${C.OFFLINE_AD.durationSec}s)</button>
-          <input id="skipHours" type="number" value="8" min="0.1" step="0.1" style="width:64px"/>
-          <button data-action="skip">+시간 스킵</button>
-          <span class="muted">offline cap ${fmtDuration(C.OFFLINE_CAP_SEC)}</span>
-        </div>`),
-
-      section("환생 (프레스티지)", `
-        <div class="row">
-          <span>다음 환생 획득 genes: <b>${fmt(prestigeGain)}</b> = floor(√(lifetimeEP / 1e6))</span>
-        </div>
-        <div class="row">
-          <button data-action="prestige" ${prestigeGain.gt(0) ? "" : "disabled"}>환생 실행</button>
-        </div>`),
-
-      section("세이브 / 로드", `
-        <div class="row wrap">
-          <button data-action="save">세이브</button>
-          <button data-action="load">로드</button>
-          <button data-action="reset" class="danger">하드 리셋</button>
-        </div>`),
-
-      section("활성 Modifier", modifiersHtml(s, now)),
+      ecosystemPanel(s, ep, epRate, genes),
+      rootnodePanel(s),
+      bossPanel(s),
+      nextHostPreviewPanel(s),
+      weatherPanel(s),
+      unitsPanel(s),
+      healCollectionPanel(s),
+      growthPanel(s, now),
+      boosterOfflinePanel(),
+      prestigeSavePanel(s, genes),
+      worldsPanel(s),
+      chainTreePanel(s),
+      modifiersPanel(s, now),
     ].join("");
 
     drawGraph();
   }
 
-  function evolveButton(s: GameState, now: number): string {
-    const g = s.generators[C.MAIN_GENERATOR_ID];
-    if (g.tier >= g.maxTier) return `<button disabled>최대 tier</button>`;
-    const raw = computeCost(C.TIER.cost, g.tier);
-    const cost = applyCostModifiers(s, C.RESOURCE_IDS.EP, raw, now);
-    const afford = s.resources[C.RESOURCE_IDS.EP].amount.gte(cost);
-    return `<button data-action="evolve" ${afford ? "" : "disabled"}>진화 → tier ${g.tier + 1} (×${fmt(C.TIER.mult)}) · ${fmt(cost)} EP</button>`;
+  // ── 생태계 (미터4 + 염증 + 해독) ──
+  function ecosystemPanel(s: GameState, ep: Decimal, epRate: Decimal, genes: Decimal): string {
+    const meterBars = (Object.keys(METER_META) as MeterKey[])
+      .map((k) => bar(METER_META[k].label, s.meters[k], METER_META[k].color)).join("");
+    return section("생태계 — 장수온심 (숲·물길·온기·빛)", `
+      ${meterBars}
+      ${bar("염증(오염)", s.inflammation, "#ef4444")}
+      ${bar("해독 부담", s.detox, "#f59e0b")}
+      <div class="grid" style="margin-top:8px">
+        ${stat("EP", fmt(ep))}
+        ${stat("EP/s", fmtRate(epRate))}
+        ${stat("genes", fmt(genes))}
+        ${stat("이주 횟수", String(s.prestige.migrations))}
+        ${stat("미터 평균", meterAverage(s).toFixed(3))}
+      </div>`);
   }
 
-  function upgradesHtml(s: GameState, now: number): string {
-    return `<div class="list">${C.UPGRADES.map((tpl) => {
-      // config 의 upgrade 는 정의(템플릿); 현재 level 은 상태에서 별도 추적하지 않고
-      // config 객체 자체가 런타임 level 을 들고 있다 (main 이 동일 인스턴스 사용).
-      const up = tpl;
+  // ── 뿌리노드 (마이크로바이옴) ──
+  function rootnodePanel(s: GameState): string {
+    const o = s.rootnode.outputs;
+    return section("뿌리노드 · 마이크로바이옴 (만류의 宗)", `
+      ${bar("다양성(내구도=방어력)", s.rootnode.diversity, "#22d3ee")}
+      <div class="sub">전 월드 배급 4출력</div>
+      ${bar("면역력", o.immune, "#60a5fa")}
+      ${bar("신경전달", o.neuro, "#c084fc")}
+      ${bar("SCFA", o.scfa, "#4ade80")}
+      ${bar("해독·염증방어", o.detox, "#f59e0b")}
+      <div class="row"><span class="muted">하류 난이도 계수: <b>${downstreamDifficulty(s).toFixed(2)}</b> (다양성↑ → 하류 약해짐 = 만류귀종)</span></div>`);
+  }
+
+  // ── 보스전 ──
+  function bossPanel(s: GameState): string {
+    const host = HOSTS[s.campaign.hostIndex];
+    const progress = `숙주 ${s.campaign.hostIndex + 1}/${HOSTS.length}`;
+    const hostCard = host
+      ? `<div class="host"><b>${host.name}</b> (${host.age}) · <span class="muted">${progress}</span><div class="muted">${host.bio}</div></div>`
+      : "";
+
+    const picker = BOSSES.map((b) =>
+      `<button data-action="startBoss" data-id="${b.id}">${b.disease} 시작(debug)</button>`
+    ).join("");
+
+    if (!s.encounter) {
+      return section("보스전 (질병)", `
+        ${hostCard}
+        <div class="row wrap">${picker}</div>
+        <div class="muted">보스를 시작하면 그 질병의 미터 벡터로 상태가 세팅됩니다. (뿌리노드가 튼튼할수록 덜 무너진 채 시작 — 만류귀종)</div>`);
+    }
+
+    const e = s.encounter;
+    const cx = meterCtx(s);
+    const gateRow = (label: string, expr: string, done: boolean) =>
+      `<div class="gate ${done ? "on" : ""}">${done ? "✓" : "·"} <b>${label}</b> <span class="muted">${expr || "—"}</span></div>`;
+    const won = e.phase === "won";
+    const gaugeOver = e.gauge > 1;
+
+    const nextHost = HOSTS[s.campaign.hostIndex + 1];
+    const healMod = s.modifiers.find((m) => m.source === `heal:${e.bossId}`);
+    const healedCount = BOSSES.filter((b) => s.collection.has(`boss:${b.id}`)).length;
+    const gain = C.genesGain(s);
+    const winBlock = won
+      ? `<div class="result">
+           <div class="result-title">🟢 항상성 복원</div>
+           <div class="result-cut">${host ? `${host.name} (${host.age}) — "${host.recoveryCut}"` : ""}</div>
+           <div class="result-frame">증상을 없앤 게 아니라, 뿌리를 정비해 <b>몸이 스스로 균형을 되찾기 시작</b>했다.</div>
+           <div class="result-rows">
+             <div>🏅 치유 지혜: ${healMod ? `${healMod.scope}/${healMod.target ?? "*"} ${healMod.type}=${fmt(healMod.value)}` : "—"} <span class="muted">(영구·이주해도 유지)</span></div>
+             <div>🧬 계승 genes <b>${fmt(gain)}</b> · 재발저항 ${e.relapseResist.toFixed(2)} · 도감 ${healedCount}/${BOSSES.length}</div>
+           </div>
+           ${nextHost
+             ? `<button data-action="migrate">이주 → ${nextHost.name} (${nextHost.boss.disease})</button>`
+             : `<div class="muted">모든 숙주 완료 — 캠페인 클리어 🎉</div>`}
+         </div>`
+      : "";
+
+    const w = worldById(e.world);
+    const worldStr = w
+      ? `${ELEMENT_LABEL[w.element]}·${w.organ} · 감정:${w.emotion} · 오미:${tasteLabel(w.tasteResource)}`
+      : `${e.world} · 감정:${e.emotion}`;
+    const sensitiveBanner = e.sensitive
+      ? `<div class="disclaimer">⚠ 이 게임은 몸속 생태계를 다루는 <b>은유적 체험</b>이며 <b>의학적 조언이 아닙니다</b>.
+           ${e.disease}은(는) 특히 전문적인 진단과 치료가 필요합니다. 회복은 혼자가 아니라 전문가와 함께.</div>`
+      : "";
+    return section(`보스전 — ${e.disease} <span class="muted">[${worldStr}]</span>`, `
+      ${sensitiveBanner}
+      ${hostCard}
+      <div class="row wrap">
+        <span class="phase">${PHASE_LABEL[e.phase]}</span>
+        ${e.paradox ? `<span class="paradox">역설: ${e.paradox}</span>` : ""}
+        <button data-action="leaveBoss">이탈</button>
+      </div>
+      ${bar(`${e.gaugeLabel} (${e.gaugeBehavior})${gaugeOver ? " ⚠OVERFLOW" : ""}`, Math.min(1, e.gauge), gaugeOver ? "#ef4444" : "#eab308")}
+      ${e.mindLock
+        ? (() => {
+            const open = mindFoundationMet(s, e.mindLock!);
+            return `<div class="gate ${open ? "on" : ""}">${open ? "✓ 식(識) 잠금 해제 — 이제 빛(mind)이 열린다" : `🔒 식(識) 잠금 — 빛 cap ${e.mindLock!.cap} (지반 장·수·열 평균≥${e.mindLock!.foundationMeters} && 염증≤${e.mindLock!.foundationInflammation} 필요)`}</div>`;
+          })()
+        : ""}
+      ${e.gaugeBehavior === "stealthGrow"
+        ? `<div class="gate ${s.meters.water >= 0.6 ? "on" : ""}">${s.meters.water >= 0.6 ? "👁 감시망 가동(은신 해제) — 연료 차단 시 종양 억제(관해)" : "🫥 은신 중 — 물길(NK 순찰)을 올려 은신을 해제하라"}</div>`
+        : ""}
+      <div class="gates">
+        ${gateRow("순환", e.gates.circulation, evalGate(e.gates.circulation, cx))}
+        ${gateRow("정화", e.gates.purification, evalGate(e.gates.purification, cx))}
+        ${gateRow("재생·승리", e.gates.regeneration, victoryMet(s))}
+      </div>
+      <div class="sub">순·정·재 손길 (heatPolarity ${e.heatPolarity > 0 ? "+1 보(온기↑)" : "-1 사·淸熱(온기↓)"})</div>
+      <div class="row wrap">
+        <button data-action="circulate">순환 (물길·온기)</button>
+        <button data-action="purify">정화 (염증·게이지·해독↓)</button>
+        <button data-action="regenerate">재생 (숲·빛·뿌리)</button>
+        <button data-action="attack" class="${e.attackRaisesGauge > 0 ? "danger" : ""}">공격/딜${e.attackRaisesGauge > 0 ? " ⚠자해" : ""}</button>
+      </div>
+      <div class="sub">리워드 광고 지점 (🎬 = 광고 후 보상)</div>
+      <div class="row wrap">
+        <button data-action="crisis">🎬 위기 지원군 (게이지↓·염증↓)</button>
+        <button data-action="meditation">🎬 명상 부스터 (빛↑)</button>
+      </div>
+      ${(() => {
+        const amt = tasteAmount(s, e.taste);
+        const canUse = amt >= TASTE_COST;
+        return `<div class="row wrap"><span class="muted">오미 ${tasteLabel(e.taste)}: <b>${amt.toFixed(2)}</b> · ${TASTE_EFFECT_DESC[e.taste] ?? "—"}</span>
+          <button data-action="useTaste" ${canUse ? "" : "disabled"}>오미 사용 (−${TASTE_COST})</button></div>`;
+      })()}
+      ${winBlock}`);
+  }
+
+  // ── 다음 숙주 미리보기 (만류귀종 체감) ──
+  function nextHostPreviewPanel(s: GameState): string {
+    const next = HOSTS[s.campaign.hostIndex + 1];
+    if (!next) {
+      return section("다음 숙주 미리보기 (만류귀종)", `<span class="muted">마지막 숙주 — 다음 없음</span>`);
+    }
+    const boss = next.boss;
+    const preview = computeStartMeters(boss, s); // 현재 뿌리 반영
+    const regenNow = adjustedInflammationRegen(boss, s);
+    const regenWorst = boss.inflammation.regen * 2; // diversity 0 = 최악
+    const rows = (Object.keys(METER_META) as MeterKey[]).map((k) => {
+      const worst = boss.startMeters[k]; // 뿌리 0 → base
+      const nowV = preview[k];
+      const gain = nowV - worst;
+      return `<div class="prev"><span class="bl">${METER_META[k].label}</span>
+        <span class="muted">${worst.toFixed(2)} →</span> <b style="color:${METER_META[k].color}">${nowV.toFixed(2)}</b>
+        <span class="pg">${gain > 0.001 ? "+" + gain.toFixed(2) : ""}</span></div>`;
+    }).join("");
+    return section("다음 숙주 미리보기 (만류귀종)", `
+      <div class="muted">${next.name} (${next.age}) · ${boss.disease} [${boss.world}]</div>
+      <div class="sub">현재 뿌리(다양성 ${s.rootnode.diversity.toFixed(2)}) 진입 시 시작값 — 최악(뿌리0) → 현재</div>
+      ${rows}
+      <div class="prev"><span class="bl">염증 regen</span>
+        <span class="muted">${regenWorst.toFixed(3)} →</span> <b style="color:#ef4444">${regenNow.toFixed(3)}</b>
+        <span class="pg">${regenNow < regenWorst ? "↓낮을수록 유리" : ""}</span></div>
+      <div class="muted">재생 손길로 뿌리를 더 키우면 시작 미터↑·염증 regen↓ → 다음 보스가 수월해진다. "장부터"가 이득.</div>`);
+  }
+
+  // ── 히어로 유닛 (뽑기·로스터) ──
+  function unitsPanel(s: GameState): string {
+    const bossId = s.encounter?.bossId;
+    const owned = UNITS.filter((u) => unitCount(s, u.id) > 0).length;
+    const rows = UNITS.slice()
+      .sort((a, b) => unitCount(s, b.id) - unitCount(s, a.id))
+      .map((u) => {
+        const n = unitCount(s, u.id);
+        const rel = isRelevant(u, bossId);
+        const g = u.grants;
+        const eff = `${g.scope}/${g.target ?? "*"} ${g.type}=${fmt(g.value)}`;
+        return `<div class="li ${n > 0 ? "" : "dim"}">
+          <span class="li-main ${rel ? "egood" : ""}">${rel ? "★ " : ""}${u.name} <span class="r-${u.rarity}">${u.rarity}</span>${n > 0 ? ` ×${n}` : ""}
+            <span class="muted"> · ${u.role}</span></span>
+          <span class="muted">${eff}</span></div>`;
+      }).join("");
+    return section(`히어로 유닛 (로스터 ${owned}/${UNITS.length})`, `
+      <div class="row"><button data-action="drawHero">🎬 히어로 뽑기 (광고)</button>
+        <span class="muted">★ = 현재 보스에 특히 유효 · 배치 수만큼 스택 · 이주해도 유지</span></div>
+      <div class="list">${rows}</div>`);
+  }
+
+  // ── 치유한 질병 (도감·지혜) ──
+  function healCollectionPanel(s: GameState): string {
+    const healed = BOSSES.filter((b) => s.collection.has(`boss:${b.id}`));
+    const rows = BOSSES.map((b) => {
+      const done = s.collection.has(`boss:${b.id}`);
+      const r = b.clearReward;
+      const rewardDesc = r ? `${r.scope}/${r.target} ${r.type}=${fmt(r.value)}` : "—";
+      return `<div class="li"><span class="${done ? "egood" : "muted"}">${done ? "✓" : "·"} ${b.disease}</span>
+        <span class="muted">${rewardDesc}</span></div>`;
+    }).join("");
+    const active = s.modifiers.filter((m) => m.source.startsWith("heal:"));
+    const badges = active.length
+      ? active.map((m) =>
+          `<div class="li mono"><span class="egood">🏅 ${m.source.replace("heal:", "")}</span>
+            <span class="muted">${m.scope}/${m.target ?? "*"} ${m.type}=${fmt(m.value)}</span></div>`
+        ).join("")
+      : `<span class="muted">아직 없음 — 항상성 복원 시 획득</span>`;
+    return section(`치유한 질병 (도감·지혜) ${healed.length}/${BOSSES.length}`, `
+      <div class="list">${rows}</div>
+      <div class="sub">획득한 치유 지혜 (영구 · 이주해도 유지)</div>
+      <div class="list">${badges}</div>`);
+  }
+
+  // ── 숙주 일상 (날씨) ──
+  function weatherPanel(s: GameState): string {
+    const list = eventsForBoss(s.encounter?.bossId);
+    const buttons = list
+      .map((e) =>
+        `<button data-action="hostEvent" data-id="${e.id}" class="${e.kind}" title="${e.desc}">${e.kind === "bad" ? "⛈" : "☀"} ${e.label}</button>`
+      )
+      .join("");
+    const now = ctx.now();
+    const log = eventLog.length
+      ? eventLog
+          .map((l) =>
+            `<div class="li"><span class="${l.kind === "bad" ? "ebad" : "egood"}">${l.kind === "bad" ? "⛈" : "☀"} ${l.label}</span><span class="muted">${((now - l.at) / 1000).toFixed(0)}s 전</span></div>`
+          )
+          .join("")
+      : `<span class="muted">아직 없음</span>`;
+    return section("숙주 일상 (날씨) — 혼돈 엔진", `
+      <div class="muted">숙주의 하루가 속나라에 영향을 준다. "오늘 야식 먹었네" 하고 방어를 짠다.</div>
+      <div class="row wrap">${buttons}<button data-action="randomEvent">🎲 랜덤 날씨</button></div>
+      <div class="sub">최근 이벤트</div>
+      <div class="list">${log}</div>`);
+  }
+
+  // ── 성장엔진 (생산: 진화/업그레이드/뽑기/genes 트리) ──
+  function growthPanel(s: GameState, now: number): string {
+    const g = s.generators[C.MAIN_GENERATOR_ID];
+    const evoCost = applyCostModifiers(s, C.RESOURCE_IDS.EP, computeCost(C.TIER.cost, g.tier), now);
+    const canEvo = g.tier < g.maxTier && s.resources[C.RESOURCE_IDS.EP].amount.gte(evoCost);
+    const ups = C.UPGRADES.map((up) => {
       const maxed = up.maxLevel !== undefined && up.level >= up.maxLevel;
       const cost = nextCost(s, up, now);
       const afford = !maxed && s.resources[up.costResource].amount.gte(cost);
-      const g = up.grants;
-      const eff = `${g.scope}/${g.target} ${g.type}=${fmt(g.value)}`;
-      return `<div class="li">
-        <span class="li-main">${up.id} <span class="muted">Lv ${up.level}${up.maxLevel ? "/" + up.maxLevel : ""} · ${eff}</span></span>
-        <button data-action="buyUpgrade" data-id="${up.id}" ${afford ? "" : "disabled"}>${maxed ? "MAX" : fmt(cost) + " EP"}</button>
-      </div>`;
-    }).join("")}</div>`;
-  }
-
-  function permanentHtml(s: GameState, now: number): string {
-    return `<div class="list">${C.PRESTIGE.permanentUpgrades.map((up) => {
+      return `<button data-action="buyUpgrade" data-id="${up.id}" ${afford ? "" : "disabled"}>${up.id} Lv${up.level} · ${maxed ? "MAX" : fmt(cost)}</button>`;
+    }).join("");
+    const perms = C.PRESTIGE.permanentUpgrades.map((up) => {
       const maxed = up.maxLevel !== undefined && up.level >= up.maxLevel;
       const cost = nextCost(s, up, now);
-      const bal = s.prestige.currency[C.PRESTIGE_CURRENCY] ?? new Decimal(0);
+      const bal = s.prestige.genes[C.PRESTIGE_CURRENCY] ?? new Decimal(0);
       const afford = !maxed && bal.gte(cost);
-      const g = up.grants;
-      const eff = `${g.scope}/${g.target} ${g.type}=${fmt(g.value)}`;
-      return `<div class="li">
-        <span class="li-main">${up.id} <span class="muted">Lv ${up.level}${up.maxLevel ? "/" + up.maxLevel : ""} · ${eff}</span></span>
-        <button data-action="buyPermanent" data-id="${up.id}" ${afford ? "" : "disabled"}>${maxed ? "MAX" : fmt(cost) + " genes"}</button>
-      </div>`;
-    }).join("")}</div>`;
-  }
-
-  function mutationHtml(s: GameState): string {
-    const rarePlus = C.MUTATIONS.filter((m) => m.rarity !== "common");
-    const rareCollected = rarePlus.filter((m) => s.collection.has(m.id)).length;
-    const setActive = rareCollected >= C.SET_THRESHOLD;
-    const grid = C.MUTATIONS.map((m) => {
-      const owned = s.collection.has(m.id);
-      const count = s.modifiers.filter((x) => x.source === `mutation:${m.id}`).length;
-      return `<span class="chip ${owned ? "owned r-" + m.rarity : "locked"}" title="${m.rarity} · w${m.weight} · ${m.grants.scope}/${m.grants.target} ×${fmt(m.grants.value)}">
-        ${m.id}${count > 1 ? " ×" + count : ""}</span>`;
+      return `<button data-action="buyPermanent" data-id="${up.id}" ${afford ? "" : "disabled"}>${up.id} Lv${up.level} · ${maxed ? "MAX" : fmt(cost) + "g"}</button>`;
     }).join("");
-    return `
-      <div class="row"><button data-action="draw">돌연변이 뽑기</button>
-        <span class="muted">도감 ${s.collection.size}/${C.MUTATIONS.length} · rare+ ${rareCollected}/${C.SET_THRESHOLD}
-        · 세트보너스 <b class="${setActive ? "on" : "off"}">${setActive ? "ON ×2 globalRate" : "OFF"}</b></span>
+    const rareCollected = C.MUTATIONS.filter((m) => m.rarity !== "common" && s.collection.has(m.id)).length;
+    return section("성장엔진 (생산)", `
+      <div class="row"><span>${g.id} tier <b>${g.tier}/${g.maxTier}</b> · ${fmtRate(generatorRate(s, g, now))}</span></div>
+      <div class="row wrap">
+        <button data-action="evolve" ${canEvo ? "" : "disabled"}>진화→t${g.tier + 1} (×${fmt(C.TIER.mult)}) · ${fmt(evoCost)}</button>
       </div>
-      <div class="chips">${grid}</div>`;
+      <div class="sub">업그레이드 (EP)</div><div class="row wrap">${ups}</div>
+      <div class="sub">영구 트리 (genes)</div><div class="row wrap">${perms}</div>
+      <div class="sub">유익균 뽑기 · 도감 ${s.collection.size} (rare+ ${rareCollected}/${C.SET_THRESHOLD})</div>
+      <div class="row wrap"><button data-action="draw">유익균/돌연변이 뽑기</button></div>`);
   }
 
-  function modifiersHtml(s: GameState, now: number): string {
-    if (s.modifiers.length === 0) return `<span class="muted">없음</span>`;
-    const rows = s.modifiers
-      .slice()
-      .sort((a, b) => a.source.localeCompare(b.source))
-      .map((m) => {
-        const active = (m.expiresAt === undefined || m.expiresAt > now) &&
-          (!m.condition || m.condition(s));
-        return `<div class="li mono ${active ? "" : "dim"}">
-          <span>${m.source}</span>
-          <span class="muted">${m.scope}/${m.target ?? "*"} ${m.type}=${fmt(m.value)} · ${fmtRemain(m.expiresAt, now)}${m.condition ? " · cond" : ""}${active ? "" : " · (비활성)"}</span>
-        </div>`;
-      }).join("");
-    return `<div class="list">${rows}</div>`;
+  function boosterOfflinePanel(): string {
+    return section(`부스터 / 오프라인 (리워드 광고: ${adPlatformLabel()})`, `
+      <div class="row wrap">
+        ${C.BOOSTERS.map((b) => `<button data-action="booster" data-id="${b.id}">${b.label}</button>`).join("")}
+      </div>
+      <div class="row wrap">
+        <button data-action="offlineAd">오프라인 ×${fmt(C.OFFLINE_AD.grants.value)} 준비 (${C.OFFLINE_AD.durationSec}s)</button>
+        <input id="skipHours" type="number" value="8" min="0.1" step="0.1" style="width:60px"/>
+        <button data-action="skip">+시간 스킵</button>
+        <span class="muted">cap ${fmtDuration(C.OFFLINE_CAP_SEC)}</span>
+      </div>`);
   }
 
-  // ── 그래프 ───────────────────────────────────────────────────
+  function prestigeSavePanel(s: GameState, genes: Decimal): string {
+    const gain = C.PRESTIGE.gainFormula(s);
+    const won = s.encounter?.phase === "won";
+    const nextHost = HOSTS[s.campaign.hostIndex + 1];
+    const migrateHint = won
+      ? (nextHost ? `클리어! 이주 시 <b>${fmt(gain)}</b> genes 계승 → ${nextHost.name}` : "모든 숙주 완료")
+      : `이주는 <b>현재 숙주 항상성 복원(승리)</b> 후 가능 · 계승 예정 genes ${fmt(gain)}`;
+    const quality = Math.floor(s.rootnode.diversity * C.GENES_TUNING.qualityMax);
+    return section("이주 (프레스티지) / 세이브", `
+      <div class="row"><span class="muted">${migrateHint}</span></div>
+      <div class="muted">genes ${fmt(gain)} = 기본 ${C.GENES_TUNING.base} + 뿌리품질 ${quality} + 숙주깊이 ${s.campaign.hostIndex * C.GENES_TUNING.hostBonus} + 그라인드</div>
+      <div class="row wrap">
+        <button data-action="migrate" ${won && nextHost ? "" : "disabled"}>이주 → 다음 숙주</button>
+        <button data-action="save">세이브</button>
+        <button data-action="load">로드</button>
+        <button data-action="reset" class="danger">하드 리셋</button>
+      </div>
+      <div class="muted">이주 = 지혜(genes·도감) 계승 + 몸(EP·생산·뿌리노드) 리셋. 이주 ${s.prestige.migrations}회</div>`);
+  }
+
+  // ── 오행 6월드 (무대 = 오장육부) ──
+  function worldsPanel(s: GameState): string {
+    const cur = s.encounter?.world;
+    const rows = WORLDS.map((w) => {
+      const active = w.id === cur;
+      return `<div class="li"><span class="${active ? "egood" : ""}">${active ? "▶ " : ""}${ELEMENT_LABEL[w.element]} · ${w.organ}</span>
+        <span class="muted">감정:${w.emotion} · 오미:${tasteLabel(w.tasteResource)} · ${w.governedTissue}</span></div>`;
+    }).join("");
+    return section("오행 6월드 (무대 = 오장육부)", `
+      <div class="muted">오미 = 월드별 회복 자원 · 감정 = 빛(識) 전환 대상 · 주관 조직 = 증상 스킨</div>
+      <div class="list">${rows}</div>`);
+  }
+
+  // 값(0..1) → 적→황→녹 히트 색
+  function heat(v: number): string {
+    const c = clampMeter(v);
+    const r = Math.round(230 * (1 - c) + 20);
+    const g = Math.round(200 * c + 30);
+    return `rgb(${r},${g},60)`;
+  }
+
+  // 뿌리→4관문→월드→증상 라이브 트리맵
+  function treeMap(s: GameState): string {
+    const curWorld = s.encounter?.world;
+    const curBoss = s.encounter?.bossId;
+    const root = `<span class="tm-node" style="background:${heat(s.rootnode.diversity)}">🦠 뿌리 ${s.rootnode.diversity.toFixed(2)}</span>`;
+    const gates = (Object.keys(METER_META) as MeterKey[])
+      .map((k) => `<span class="tm-node" style="background:${heat(s.meters[k])}">${METER_META[k].label.split("(")[0]} ${s.meters[k].toFixed(2)}</span>`)
+      .join("");
+    const worlds = WORLDS
+      .map((w) => `<span class="tm-cell ${w.id === curWorld ? "on" : ""}">${ELEMENT_LABEL[w.element].charAt(0)}·${w.organ}</span>`)
+      .join("");
+    const symptoms = BOSSES
+      .map((b) => {
+        const healed = s.collection.has(`boss:${b.id}`);
+        const cls = b.id === curBoss ? "on" : healed ? "done" : "";
+        return `<span class="tm-cell ${cls}">${healed ? "✓" : ""}${b.disease}</span>`;
+      })
+      .join("");
+    return `
+      <div class="tm-row">${root}</div>
+      <div class="tm-arrow">↓ 4출력 배급</div>
+      <div class="tm-row">${gates}</div>
+      <div class="tm-arrow">↓ 불균형이 장부색으로</div>
+      <div class="tm-row">${worlds}</div>
+      <div class="tm-arrow">↓ 하류 증상</div>
+      <div class="tm-row">${symptoms}</div>`;
+  }
+
+  function chainTreePanel(s: GameState): string {
+    const branches = CHAIN_TREE.branches
+      .map((b) => `<div class="chain"><b>${b.gate}</b> → ${b.diseases.join(", ")}</div>`).join("");
+    const loops = feedbackLoops(s).map((l) => {
+      const pct = (l.intensity * 100).toFixed(0);
+      const color = l.active ? "#ef4444" : "#3f6212";
+      return `<div class="loop">
+        <div class="loop-head">${l.active ? "🔴 돌아가는 중" : "⚪ 정지"} · <b>${l.id}</b>
+          <span class="muted"> — ${l.active ? l.cut : "안정"}</span></div>
+        <div class="bt"><div class="bf" style="width:${pct}%;background:${color}"></div></div>
+        <div class="muted">${l.desc} · 강도 ${l.intensity.toFixed(2)}</div>
+      </div>`;
+    }).join("");
+    return section("만류귀종 트리맵 (연쇄·되먹임)", `
+      ${treeMap(s)}
+      <div class="sub">연쇄 참고 (구현된 4보스 너머의 하류)</div>
+      ${branches}
+      <div class="sub">되먹임 고리 (실시간 — 고리를 어디서 끊을까)</div>
+      ${loops}`);
+  }
+
+  function modifiersPanel(s: GameState, now: number): string {
+    if (s.modifiers.length === 0) return section("활성 Modifier", `<span class="muted">없음</span>`);
+    const rows = s.modifiers.slice().sort((a, b) => a.source.localeCompare(b.source)).map((m) => {
+      const active = (m.expiresAt === undefined || m.expiresAt > now) && (!m.condition || m.condition(s));
+      return `<div class="li mono ${active ? "" : "dim"}"><span>${m.source}</span>
+        <span class="muted">${m.scope}/${m.target ?? "*"} ${m.type}=${fmt(m.value)} · ${fmtRemain(m.expiresAt, now)}${m.condition ? " cond" : ""}</span></div>`;
+    }).join("");
+    return section("활성 Modifier", `<div class="list">${rows}</div>`);
+  }
+
+  // ── 그래프: 미터 평균(초록) + 염증(빨강) ──
   function pushSample() {
     const s = ctx.getState();
-    history.push({ t: ctx.now(), ep: s.resources[C.RESOURCE_IDS.EP].amount });
+    history.push({ t: ctx.now(), meterAvg: meterAverage(s), inflammation: s.inflammation });
     if (history.length > MAX_HISTORY) history.shift();
-  }
-
-  function log10(d: Decimal): number {
-    if (d.lte(0)) return 0;
-    // break_infinity: log10 근사 = exponent + log10(mantissa)
-    return d.exponent + Math.log10(d.mantissa);
   }
 
   function drawGraph() {
     const cx = canvas.getContext("2d");
     if (!cx) return;
-    const w = canvas.width;
-    const h = canvas.height;
-    cx.clearRect(0, 0, w, h);
+    const w = canvas.width, h = canvas.height;
     cx.fillStyle = "#0a0a0a";
     cx.fillRect(0, 0, w, h);
-
-    if (history.length < 2) return;
-    const t0 = history[0].t;
-    const t1 = history[history.length - 1].t;
-    const dt = Math.max(1, t1 - t0);
-
-    const vals = history.map((s) => log10(s.ep));
-    const vmin = Math.min(...vals, 0);
-    const vmax = Math.max(...vals, 1);
-    const vspan = Math.max(1, vmax - vmin);
-
-    // 그리드
     cx.strokeStyle = "#222";
-    cx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-      const y = (h * i) / 4;
-      cx.beginPath();
-      cx.moveTo(0, y);
-      cx.lineTo(w, y);
+    for (let i = 0; i <= 4; i++) { const y = (h * i) / 4; cx.beginPath(); cx.moveTo(0, y); cx.lineTo(w, y); cx.stroke(); }
+    if (history.length < 2) return;
+    const t0 = history[0].t, t1 = history[history.length - 1].t, dt = Math.max(1, t1 - t0);
+    const line = (key: "meterAvg" | "inflammation", color: string) => {
+      cx.strokeStyle = color; cx.lineWidth = 2; cx.beginPath();
+      history.forEach((sm, i) => {
+        const x = (w * (sm.t - t0)) / dt;
+        const y = h - h * clampMeter(sm[key]);
+        i === 0 ? cx.moveTo(x, y) : cx.lineTo(x, y);
+      });
       cx.stroke();
-    }
-
-    // 곡선 (log10 EP)
-    cx.strokeStyle = "#4ade80";
-    cx.lineWidth = 2;
-    cx.beginPath();
-    history.forEach((s, i) => {
-      const x = (w * (s.t - t0)) / dt;
-      const y = h - (h * (vals[i] - vmin)) / vspan;
-      if (i === 0) cx.moveTo(x, y);
-      else cx.lineTo(x, y);
-    });
-    cx.stroke();
-
-    cx.fillStyle = "#4ade80";
-    cx.font = "11px monospace";
-    cx.fillText(`log10(EP): ${vmin.toFixed(1)} → ${vmax.toFixed(1)}`, 6, 14);
+    };
+    line("meterAvg", "#4ade80");
+    line("inflammation", "#ef4444");
+    cx.fillStyle = "#4ade80"; cx.font = "11px monospace"; cx.fillText("미터 평균", 6, 14);
+    cx.fillStyle = "#ef4444"; cx.fillText("염증", 78, 14);
   }
 
-  return {
-    render,
-    tickGraph: pushSample,
-  };
+  return { render, tickGraph: pushSample };
 }
 
-// ── HTML/CSS 헬퍼 ────────────────────────────────────────────
+// ── HTML/CSS 헬퍼 ──
 function section(title: string, body: string): string {
   return `<section class="card"><h3>${title}</h3>${body}</section>`;
 }
 function stat(label: string, value: string): string {
   return `<div class="stat"><div class="lbl">${label}</div><div class="val">${value}</div></div>`;
 }
+function bar(label: string, v01: number, color: string): string {
+  const pct = (clampMeter(v01) * 100).toFixed(0);
+  return `<div class="bar"><span class="bl">${label}</span><div class="bt"><div class="bf" style="width:${pct}%;background:${color}"></div></div><span class="bv">${v01.toFixed(2)}</span></div>`;
+}
 
 const SHELL = `
   <header class="topbar">
-    <h1>Idle Growth Engine — Debug Inspector</h1>
-    <span class="muted">순수 계측 화면 (스토리·아트 없음)</span>
+    <h1>속나라 — Debug Inspector (P0)</h1>
+    <span class="muted">순수 계측 · 의학적 조언 아님 · 몸속 생태계 체험</span>
   </header>
-  <canvas id="epGraph" width="920" height="160"></canvas>
+  <canvas id="graph" width="920" height="140"></canvas>
   <div id="dash"></div>
 `;
 
@@ -308,38 +603,69 @@ function injectStyles() {
   const css = `
   :root { color-scheme: dark; }
   body { margin:0; background:#0d0d0f; color:#e5e5e5; font-family: ui-monospace, monospace; }
-  .topbar { display:flex; align-items:baseline; gap:12px; padding:10px 14px; border-bottom:1px solid #222; }
+  .topbar { display:flex; align-items:baseline; gap:12px; padding:10px 14px; border-bottom:1px solid #222; flex-wrap:wrap; }
   .topbar h1 { font-size:15px; margin:0; }
-  #epGraph { display:block; width:100%; max-width:960px; margin:10px auto; border:1px solid #222; background:#0a0a0a; }
-  #dash { display:grid; grid-template-columns: repeat(auto-fill,minmax(320px,1fr)); gap:10px; padding:0 14px 40px; max-width:1200px; margin:0 auto; }
+  #graph { display:block; width:100%; max-width:960px; margin:10px auto; border:1px solid #222; background:#0a0a0a; }
+  #dash { display:grid; grid-template-columns: repeat(auto-fill,minmax(340px,1fr)); gap:10px; padding:0 14px 40px; max-width:1280px; margin:0 auto; }
   .card { border:1px solid #262626; border-radius:6px; padding:10px 12px; background:#141416; }
-  .card h3 { margin:0 0 8px; font-size:13px; color:#a3a3a3; font-weight:600; }
-  .grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(110px,1fr)); gap:8px; }
+  .card h3 { margin:0 0 8px; font-size:13px; color:#cbd5e1; font-weight:600; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(96px,1fr)); gap:8px; }
   .stat { background:#0f0f11; border:1px solid #222; border-radius:4px; padding:6px 8px; }
   .stat .lbl { font-size:10px; color:#777; }
-  .stat .val { font-size:15px; color:#f5f5f5; }
-  .row { margin:6px 0; display:flex; align-items:center; gap:8px; }
+  .stat .val { font-size:14px; color:#f5f5f5; }
+  .bar { display:flex; align-items:center; gap:8px; margin:3px 0; }
+  .bar .bl { width:120px; font-size:11px; color:#cbd5e1; }
+  .bar .bt { flex:1; height:12px; background:#0f0f11; border:1px solid #222; border-radius:6px; overflow:hidden; }
+  .bar .bf { height:100%; transition:width .15s; }
+  .bar .bv { width:36px; text-align:right; font-size:11px; color:#aaa; }
+  .sub { font-size:11px; color:#888; margin:8px 0 3px; border-top:1px solid #1c1c1c; padding-top:5px; }
+  .row { margin:5px 0; display:flex; align-items:center; gap:8px; }
   .row.wrap, .wrap { flex-wrap:wrap; }
-  .list { display:flex; flex-direction:column; gap:4px; }
-  .li { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:3px 4px; border-bottom:1px solid #1c1c1c; }
-  .li-main { font-size:12px; }
-  .li.dim { opacity:.4; }
-  .mono { font-size:11px; }
+  .list { display:flex; flex-direction:column; gap:3px; }
+  .li { display:flex; justify-content:space-between; gap:8px; padding:2px 4px; border-bottom:1px solid #1c1c1c; }
+  .li.dim { opacity:.4; } .mono { font-size:11px; }
   .muted { color:#777; font-size:11px; }
   button { background:#1f2937; color:#e5e5e5; border:1px solid #374151; border-radius:4px; padding:5px 9px; font:inherit; font-size:12px; cursor:pointer; }
   button:hover:not(:disabled) { background:#374151; }
   button:disabled { opacity:.35; cursor:not-allowed; }
   button.danger { background:#3f1d1d; border-color:#742a2a; }
   input { background:#0f0f11; color:#e5e5e5; border:1px solid #333; border-radius:4px; padding:4px; font:inherit; }
-  .chips { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
-  .chip { font-size:10px; padding:2px 6px; border-radius:10px; border:1px solid #333; }
-  .chip.locked { color:#555; border-color:#222; }
-  .chip.owned { color:#111; font-weight:600; }
-  .chip.r-common { background:#9ca3af; }
-  .chip.r-rare { background:#60a5fa; }
-  .chip.r-epic { background:#c084fc; }
-  .chip.r-legendary { background:#fbbf24; }
-  b.on { color:#4ade80; } b.off { color:#666; }
+  .phase { background:#1e3a8a; color:#dbeafe; padding:2px 8px; border-radius:10px; font-size:12px; }
+  .paradox { color:#fca5a5; font-size:11px; }
+  .gates { margin:6px 0; }
+  .gate { font-size:11px; padding:2px 0; color:#888; }
+  .gate.on { color:#4ade80; }
+  .result { margin-top:8px; padding:10px 12px; border:1px solid #166534; border-radius:6px; background:#0e2417; }
+  .result-title { color:#4ade80; font-weight:700; font-size:14px; }
+  .result-cut { color:#dcfce7; font-size:12px; margin:4px 0; font-style:italic; }
+  .result-frame { color:#86efac; font-size:11px; margin:4px 0 6px; line-height:1.5; }
+  .result-frame b { color:#bbf7d0; }
+  .result-rows { font-size:11px; color:#cbd5e1; display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
+  .result button { background:#14532d; border-color:#166534; color:#dcfce7; }
+  .host { background:#0f0f11; border:1px solid #222; border-radius:4px; padding:6px 8px; margin-bottom:6px; font-size:12px; }
+  .host b { color:#f5f5f5; }
+  .disclaimer { background:#3a2e12; border:1px solid #7c5e10; border-radius:5px; padding:7px 9px; margin-bottom:7px; font-size:11px; color:#fde68a; line-height:1.5; }
+  .disclaimer b { color:#fef3c7; }
+  .prev { display:flex; align-items:center; gap:8px; font-size:12px; padding:2px 0; }
+  .prev .bl { width:80px; color:#cbd5e1; }
+  .prev .pg { color:#4ade80; font-size:11px; }
+  button.bad { background:#3a1414; border-color:#5b2020; }
+  button.good { background:#123320; border-color:#1c5233; }
+  .ebad { color:#fca5a5; } .egood { color:#86efac; }
+  .li-main .r-common { color:#9ca3af; } .li-main .r-rare { color:#60a5fa; }
+  .li-main .r-epic { color:#c084fc; } .li-main .r-legendary { color:#fbbf24; }
+  .chain { font-size:11px; padding:2px 0; color:#cbd5e1; }
+  .chain.root { color:#22d3ee; font-weight:600; }
+  .loop { margin:5px 0; padding:4px 0; border-top:1px solid #1c1c1c; }
+  .loop-head { font-size:12px; }
+  .loop .bt { height:8px; background:#0f0f11; border:1px solid #222; border-radius:4px; overflow:hidden; margin:3px 0; }
+  .loop .bf { height:100%; transition:width .2s; }
+  .tm-row { display:flex; flex-wrap:wrap; gap:4px; justify-content:center; margin:2px 0; }
+  .tm-arrow { text-align:center; color:#666; font-size:10px; margin:1px 0; }
+  .tm-node { font-size:10px; padding:2px 7px; border-radius:10px; color:#0a0a0a; font-weight:600; }
+  .tm-cell { font-size:10px; padding:2px 6px; border-radius:4px; border:1px solid #2a2a2a; color:#777; }
+  .tm-cell.on { border-color:#4ade80; color:#dcfce7; background:#14532d; font-weight:600; }
+  .tm-cell.done { color:#86efac; border-color:#166534; }
   `;
   const style = document.createElement("style");
   style.textContent = css;

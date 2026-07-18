@@ -157,6 +157,14 @@ export const BOOSTERS: BoosterDef[] = [
 // ─────────────────────────────────────────────────────────────
 // 오프라인 광고 ×N 스텁 — offlinePayout scope 임시 modifier
 // ─────────────────────────────────────────────────────────────
+// 파장/명상 부스터 (리워드 광고) — 빛(mind) 지속 지지 임시 modifier
+export const MEDITATION_BOOSTER = {
+  id: "meditation",
+  label: "명상(빛↑ 90s)",
+  durationSec: 90,
+  grants: { scope: "meter", target: "mind", type: "add", value: D(0.02) } as Omit<Modifier, "id" | "source">,
+};
+
 export const OFFLINE_CAP_SEC = 4 * 3600; // 오프라인 보상 상한 4시간
 export const OFFLINE_AD = {
   id: "offlineAd",
@@ -167,7 +175,22 @@ export const OFFLINE_AD = {
 // ─────────────────────────────────────────────────────────────
 // 프레스티지 레이어 (환생)
 // ─────────────────────────────────────────────────────────────
-const PRESTIGE_K = 1e6; // gain = floor(sqrt(lifetimeEP / K))
+// 이주 보상(genes) 튜닝 — 클리어 기본 보상 + 뿌리 재건 품질 + 숙주 깊이 + 그라인드 보너스.
+// (핵심: 초반 숙주도 이주 보상이 남고, 뿌리를 튼튼히 재건할수록 더 준다 → 의도한 전략에 보상)
+export const GENES_TUNING = {
+  base: 10, // 항상성 복원(클리어) 기본 보상
+  qualityMax: 20, // 뿌리노드 다양성(재건 품질) 최대 보너스
+  hostBonus: 10, // 숙주가 깊어질수록 (hostIndex 당)
+  progressK: 1e4, // 장기 그라인드 보너스 계수: floor(√(lifetimeEP/K))
+};
+
+export function genesGain(s: GameState): Decimal {
+  const lifeEP = s.lifetime[RESOURCE_IDS.EP] ?? D(0);
+  const progress = lifeEP.div(GENES_TUNING.progressK).sqrt().floor(); // 그라인드 보너스
+  const quality = Math.floor(s.rootnode.diversity * GENES_TUNING.qualityMax); // 뿌리 재건 품질 0..20
+  const hostBonus = (s.campaign?.hostIndex ?? 0) * GENES_TUNING.hostBonus;
+  return progress.add(GENES_TUNING.base + quality + hostBonus);
+}
 
 export const PRESTIGE: PrestigeLayer = {
   id: "genesis",
@@ -175,10 +198,7 @@ export const PRESTIGE: PrestigeLayer = {
   // resetScope: EP·generator 되돌리고 EP 계열 modifier 제거.
   //   mutation(도감)·prestige(영구트리)·setBonus 는 유지된다.
   resetScope: ["resources", "generators", "upgrade:", "tier:", "booster:"],
-  gainFormula: (s) => {
-    const lifeEP = s.lifetime[RESOURCE_IDS.EP] ?? D(0);
-    return lifeEP.div(PRESTIGE_K).sqrt().floor();
-  },
+  gainFormula: genesGain,
   permanentUpgrades: [
     {
       id: "core",
@@ -243,10 +263,26 @@ export function createInitialState(now: number): GameState {
     resources,
     generators,
     modifiers,
+    // 4대 미터 — 무너진 상태에서 시작하지 않고 중립(0.5)에서 출발 (보스전 진입 시 boss.startMeters 로 덮어씀)
+    meters: { gut: 0.5, water: 0.5, warmth: 0.5, mind: 0.5 },
+    inflammation: 0,
+    detox: 0,
+    tasteResources: {},
+    // 뿌리노드(마이크로바이옴) — diversity 가 내구도. 초반은 취약한 숙주라 낮게 출발.
+    rootnode: initialRootnode(),
     collection: new Set<string>(),
-    prestige: { count: 0, currency: {} },
+    prestige: { migrations: 0, genes: {} },
     lifetime: {},
+    campaign: { hostIndex: 0 },
     lastSeenAt: now,
+  };
+}
+
+/** 새 숙주(새 몸)의 초기 뿌리노드. 이주 시 몸은 새것이라 뿌리노드는 리셋된다(지혜=genes만 계승). */
+export function initialRootnode() {
+  return {
+    diversity: 0.3,
+    outputs: { immune: 0.3, neuro: 0.3, scfa: 0.3, detox: 0.3 },
   };
 }
 
