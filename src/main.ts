@@ -256,16 +256,18 @@ const defenseGame = createDefenseGame(document.getElementById("defense")!);
 const defenseEl = document.getElementById("defense")!;
 const defenseBtn = document.getElementById("defenseToggle")!;
 let inDefense = false;
-defenseBtn.addEventListener("click", () => {
-  inDefense = !inDefense;
-  defenseEl.hidden = !inDefense;
-  document.getElementById("game")!.hidden = inDefense || view !== "game";
-  document.getElementById("debug")!.hidden = inDefense || view !== "debug";
-  toggleBtn.style.display = inDefense ? "none" : "";
-  defenseBtn.textContent = inDefense ? "← 나가기" : "🛡 지켜라";
-  if (inDefense) defenseGame.show();
+function setDefense(on: boolean) {
+  inDefense = on;
+  defenseEl.hidden = !on;
+  document.getElementById("game")!.hidden = on || view !== "game";
+  document.getElementById("debug")!.hidden = on || view !== "debug";
+  toggleBtn.style.display = on ? "none" : "";
+  defenseBtn.textContent = on ? "← 나가기" : "🛡 지켜라";
+  if (on) defenseGame.show();
   else defenseGame.hide();
-});
+}
+defenseBtn.addEventListener("click", () => setDefense(!inDefense));
+setDefense(true); // 기본: 디펜스 모드로 부팅 (바로 플레이)
 
 // 승리 감지 → 영구 '치유 지혜' 배지 materialize (Decimal은 modifiers 직렬화가 처리)
 function grantClearReward() {
