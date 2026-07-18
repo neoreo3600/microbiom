@@ -38,24 +38,24 @@ export const CELL_TIERS: CellDef[] = [
   { tier: 4, name: "NK세포", hue: 340, hp: 160, atk: 62, rate: 1.7, range: 5.2 },
 ];
 
-// 적 정의 (speed = 칸/초)
+// 적 정의 (speed = 칸/초). 난이도 상향 — 더 두껍고 빠르고 많다.
 export const ENEMY_DEFS: Record<string, EnemyDef> = {
-  badbac: { type: "badbac", name: "유해균", hue: 95, hp: 34, speed: 0.55, atk: 8, bounty: 3, radius: 0.30 },
-  virus: { type: "virus", name: "바이러스", hue: 62, hp: 18, speed: 1.05, atk: 6, bounty: 2, radius: 0.24 },
-  inflam: { type: "inflam", name: "염증세포", hue: 22, hp: 62, speed: 0.72, atk: 11, bounty: 4, radius: 0.32 },
-  boss_cancer: { type: "boss_cancer", name: "암세포", hue: 288, hp: 900, speed: 0.26, atk: 34, bounty: 70, radius: 0.6, boss: true },
+  badbac: { type: "badbac", name: "유해균", hue: 95, hp: 52, speed: 0.62, atk: 10, bounty: 3, radius: 0.30 },
+  virus: { type: "virus", name: "바이러스", hue: 62, hp: 26, speed: 1.15, atk: 7, bounty: 2, radius: 0.24 },
+  inflam: { type: "inflam", name: "염증세포", hue: 22, hp: 100, speed: 0.78, atk: 15, bounty: 4, radius: 0.32 },
+  boss_cancer: { type: "boss_cancer", name: "암세포", hue: 288, hp: 1500, speed: 0.28, atk: 45, bounty: 80, radius: 0.6, boss: true },
 };
 
-// 웨이브 캠페인(8) — 난이도 곡선 + 중간·최종 보스. 스폰(타입·개수·간격초).
+// 웨이브 캠페인(8) — 더 조밀·강력. 스폰(타입·개수·간격초).
 export const WAVES: DefenseConfig["waves"] = [
-  [{ type: "badbac", n: 6, gap: 0.9 }],
-  [{ type: "badbac", n: 8, gap: 0.7 }],
-  [{ type: "virus", n: 10, gap: 0.5 }],
-  [{ type: "inflam", n: 6, gap: 0.9 }, { type: "badbac", n: 6, gap: 0.6 }],
-  [{ type: "badbac", n: 8, gap: 0.5 }, { type: "boss_cancer", n: 1, gap: 0 }, { type: "virus", n: 8, gap: 0.5 }],
-  [{ type: "virus", n: 12, gap: 0.35 }, { type: "inflam", n: 6, gap: 0.8 }],
-  [{ type: "inflam", n: 10, gap: 0.6 }, { type: "badbac", n: 10, gap: 0.4 }],
-  [{ type: "badbac", n: 6, gap: 0.5 }, { type: "boss_cancer", n: 2, gap: 5 }, { type: "inflam", n: 8, gap: 0.7 }],
+  [{ type: "badbac", n: 8, gap: 0.75 }],
+  [{ type: "badbac", n: 10, gap: 0.55 }],
+  [{ type: "virus", n: 14, gap: 0.35 }],
+  [{ type: "inflam", n: 8, gap: 0.7 }, { type: "badbac", n: 10, gap: 0.45 }],
+  [{ type: "badbac", n: 12, gap: 0.4 }, { type: "boss_cancer", n: 1, gap: 0 }, { type: "virus", n: 12, gap: 0.35 }],
+  [{ type: "virus", n: 18, gap: 0.25 }, { type: "inflam", n: 8, gap: 0.6 }],
+  [{ type: "inflam", n: 14, gap: 0.45 }, { type: "badbac", n: 14, gap: 0.3 }],
+  [{ type: "badbac", n: 8, gap: 0.4 }, { type: "boss_cancer", n: 2, gap: 6 }, { type: "inflam", n: 12, gap: 0.55 }],
 ];
 
 export const DEFENSE_CONFIG: DefenseConfig = {
@@ -63,11 +63,20 @@ export const DEFENSE_CONFIG: DefenseConfig = {
   enemies: ENEMY_DEFS,
   waves: WAVES,
   organTraits: ORGAN_TRAITS,
-  wallHp: 320,
+  wallHp: 360,
   wallCost: 35,
   t1Cost: 20,
   coreHp: 100,
   energyStart: 60,
-  energyRegen: 9, // 초당
+  energyRegen: 7.5, // 초당 (경제 타이트)
   intermissionSec: 3,
 };
+
+// 영웅 스킬 — 기존 히어로 유닛(마스코트 아트)을 액티브 스킬로 투입. unit = content/units.ts id.
+export interface HeroSkill { id: string; unit: string; name: string; icon: string; cost: number; cd: number; effect: "nk" | "wall" | "heal" | "energy"; }
+export const HERO_SKILLS: HeroSkill[] = [
+  { id: "nk", unit: "nk", name: "NK 강타", icon: "💥", cost: 45, cd: 14, effect: "nk" },
+  { id: "lacto", unit: "lacto", name: "방벽", icon: "🧱", cost: 35, cd: 16, effect: "wall" },
+  { id: "treg", unit: "treg", name: "치유", icon: "💚", cost: 30, cd: 12, effect: "heal" },
+  { id: "butyrate", unit: "butyrate", name: "충전", icon: "⚡", cost: 0, cd: 10, effect: "energy" },
+];

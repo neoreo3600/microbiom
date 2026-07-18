@@ -22,7 +22,7 @@ export interface DefenseConfig {
 
 const NEUTRAL_TRAIT: OrganTrait = { regenMul: 1, bountyMul: 1, rangeBonus: 0, rateMul: 1 };
 
-export interface Cell { id: number; col: number; row: number; kind: "immune" | "wall"; tier: number; hp: number; maxHp: number; cd: number; flash: number; }
+export interface Cell { id: number; col: number; row: number; kind: "immune" | "wall"; tier: number; hp: number; maxHp: number; cd: number; flash: number; life?: number; }
 export interface Enemy { id: number; type: string; col: number; y: number; hp: number; maxHp: number; atkCd: number; hit: number; }
 export interface Projectile { id: number; col: number; y: number; ty: number; dmg: number; hue: number; }
 export interface Spawn { type: string; col: number; at: number; }
@@ -37,7 +37,7 @@ export interface DefenseState {
   queue: Spawn[]; spawned: number;
   nextId: number; kills: number;
   ip: number; upg: Record<string, number>; marrowTimer: number;
-  events: { kind: "kill" | "merge" | "place" | "hitcore" | "wave" | "nofunds" | "buy" | "spawn"; col?: number; y?: number; }[];
+  events: { kind: "kill" | "merge" | "place" | "hitcore" | "wave" | "nofunds" | "buy" | "spawn" | "hit" | "boss" | "skill"; col?: number; y?: number; n?: number; }[];
 }
 
 /** 현재 웨이브의 장기 특성 */
@@ -160,6 +160,29 @@ export function dropCell(s: DefenseState, a: Cell, col: number, row: number): "m
   return "no";
 }
 
+// ── 영웅 스킬 (액티브) ──────────────────────────────────────────
+export function skillNk(s: DefenseState, dmg: number): void {
+  for (const e of s.enemies) { e.hp -= dmg; e.hit = 0.2; }
+}
+export function skillHeal(s: DefenseState): void {
+  for (const c of s.cells) { c.hp = c.maxHp; c.flash = 0.3; }
+}
+export function skillEnergy(s: DefenseState, amt: number): void {
+  s.energy += amt;
+}
+export function skillWall(s: DefenseState, hp: number, life: number): void {
+  for (let col = 0; col < COLS; col++) {
+    // 각 열의 가장 앞(위쪽) 빈 칸에 임시 방벽
+    let placed = false;
+    for (let row = 0; row < ROWS && !placed; row++) {
+      if (!cellAt(s, col, row)) {
+        s.cells.push({ id: nid(), col, row, kind: "wall", tier: 0, hp, maxHp: hp, cd: 0, flash: 0.3, life });
+        placed = true;
+      }
+    }
+  }
+}
+
 export function step(s: DefenseState, dt: number): void {
   if (s.status !== "playing") return;
   dt = Math.min(dt, 0.05); // 안정성(탭 전환 후 큰 dt 방지)
@@ -170,7 +193,12 @@ export function step(s: DefenseState, dt: number): void {
     const sp = s.queue[s.spawned++];
     const d = s.cfg.enemies[sp.type];
     s.enemies.push({ id: nid(), type: sp.type, col: sp.col, y: -0.6, hp: d.hp, maxHp: d.hp, atkCd: 0, hit: 0 });
+    if (d.boss) s.events.push({ kind: "boss", col: sp.col });
   }
+
+  // 임시 방벽(영웅 스킬) 수명
+  for (const c of s.cells) if (c.life !== undefined) c.life -= dt;
+  s.cells = s.cells.filter((c) => c.life === undefined || c.life > 0);
 
   const trait = organTraitOf(s);
 
@@ -254,7 +282,7 @@ export function step(s: DefenseState, dt: number): void {
         const dist = Math.abs(e.y - p.ty);
         if (dist < bd) { bd = dist; best = e; }
       }
-      if (best) { best.hp -= p.dmg; best.hit = 0.12; }
+      if (best) { best.hp -= p.dmg; best.hit = 0.12; s.events.push({ kind: "hit", col: p.col, y: p.ty, n: Math.round(p.dmg) }); }
       p.y = -99; // 제거 표식
     }
   }

@@ -4,10 +4,13 @@
 
 import {
   COLS, ROWS, createDefenseState, startGame, step, placeCell, placeWall,
-  cellAt, dropCell, buyUpgrade, nextWave, shopCost, type DefenseState, type Cell,
+  cellAt, dropCell, buyUpgrade, nextWave, shopCost,
+  skillNk, skillHeal, skillEnergy, skillWall, type DefenseState, type Cell,
 } from "./engine";
-import { DEFENSE_CONFIG, SHOP, ORGANS, ORGAN_INFO, type OrganKey } from "./content";
+import { DEFENSE_CONFIG, SHOP, HERO_SKILLS, ORGANS, ORGAN_INFO, type OrganKey } from "./content";
 import { loadMeta, saveMeta, META_SHOP, metaCost, metaMaxed, buyMeta, metaBonus, runReward } from "./meta";
+import { UNITS } from "../content/units";
+import { unitAvatar } from "../game/art";
 import { sfx, floatText, burst, confetti } from "../game/juice";
 
 const ENEMY_NAME: Record<string, string> = { badbac: "유해균", inflam: "염증세포", boss_cancer: "암세포" };
@@ -22,6 +25,13 @@ export function createDefenseGame(root: HTMLElement) {
     </div>
     <div class="d-energy">⚡<b id="d-energy">0</b><div class="d-bar wide"><div id="d-ef" class="d-ef"></div></div><span class="d-ip">🧬<b id="d-ip">0</b></span></div>
     <div class="d-arena"><canvas id="d-canvas"></canvas><div id="d-overlay" class="d-overlay"></div></div>
+    <div class="d-skills">${HERO_SKILLS.map((h) => {
+      const u = UNITS.find((x) => x.id === h.unit);
+      return `<button class="d-skill" data-skill="${h.id}" title="${h.name}">
+        <span class="dk-art">${u ? unitAvatar(u, 34) : h.icon}</span>
+        <span class="dk-nm">${h.name}</span><span class="dk-cost">${h.cost ? "⚡" + h.cost : "무료"}</span>
+        <span class="dk-cd"></span></button>`;
+    }).join("")}</div>
     <div class="d-controls">
       <button class="d-btn on" data-mode="cell">🦠 호중구 <small>${DEFENSE_CONFIG.t1Cost}</small></button>
       <button class="d-btn" data-mode="wall">🧱 성벽 <small>${DEFENSE_CONFIG.wallCost}</small></button>
@@ -45,6 +55,23 @@ export function createDefenseGame(root: HTMLElement) {
   let state = newRun();
   let lastAward = 0;
   let mode: "cell" | "wall" = "cell";
+  // 영웅 스킬 쿨다운 + 마스코트 이미지(캔버스 연출용)
+  const skillCd: Record<string, number> = {};
+  const heroImg: Record<string, HTMLImageElement> = {};
+  for (const h of HERO_SKILLS) {
+    const u = UNITS.find((x) => x.id === h.unit);
+    if (u) { const im = new Image(); im.src = "data:image/svg+xml;utf8," + encodeURIComponent(unitAvatar(u, 96)); heroImg[h.id] = im; }
+  }
+  // 연출(fx) 시스템
+  type Fx = { kind: string; x: number; y: number; vx: number; vy: number; r: number; life: number; max: number; color: string; text?: string; img?: HTMLImageElement };
+  const fx: Fx[] = [];
+  let shake = 0, banner = "", bannerLife = 0, flash = 0, flashColor = "#fff";
+  const addNum = (x: number, y: number, text: string, color: string) => fx.push({ kind: "num", x, y, vx: 0, vy: -34, r: 0, life: 0.85, max: 0.85, color, text });
+  const addSpark = (x: number, y: number, color: string, n = 5) => { for (let i = 0; i < n; i++) { const a = Math.random() * 7, s = 40 + Math.random() * 70; fx.push({ kind: "spark", x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: 2 + Math.random() * 2, life: 0.4, max: 0.4, color }); } };
+  const addRing = (x: number, y: number, color: string, rMax = 40) => fx.push({ kind: "ring", x, y, vx: 0, vy: 0, r: rMax, life: 0.5, max: 0.5, color });
+  const addHeroPop = (id: string) => { const im = heroImg[id]; if (im) fx.push({ kind: "hero", x: 0, y: 0, vx: 0, vy: 0, r: 0, life: 0.9, max: 0.9, color: "", img: im }); };
+  const showBanner = (t: string) => { banner = t; bannerLife = 1.4; };
+  const doFlash = (c: string) => { flash = 0.5; flashColor = c; };
   let running = false;
   let last = 0;
   // 레이아웃(픽셀)
@@ -118,6 +145,32 @@ export function createDefenseGame(root: HTMLElement) {
     root.querySelectorAll(".d-btn[data-mode]").forEach((x) => x.classList.toggle("on", (x as HTMLElement).dataset.mode === "cell"));
   });
 
+  const skillBtns = Array.from(root.querySelectorAll<HTMLElement>(".d-skill"));
+  skillBtns.forEach((b) => b.addEventListener("click", () => castSkill(b.dataset.skill!)));
+  function castSkill(id: string) {
+    if (state.status !== "playing") return;
+    const h = HERO_SKILLS.find((x) => x.id === id); if (!h) return;
+    if ((skillCd[id] ?? 0) > 0) { sfx.blocked(); return; }
+    if (state.energy < h.cost) { sfx.blocked(); addNum(W / 2, 50, "에너지 부족", "#ff8f9c"); return; }
+    state.energy -= h.cost;
+    skillCd[id] = h.cd;
+    if (h.effect === "nk") { skillNk(state, 240); doFlash("rgba(255,80,120,.35)"); shake = 9; for (let c = 0; c < COLS; c++) addSpark(px(c), py(1.5), "#ff8f9c", 6); }
+    else if (h.effect === "wall") { skillWall(state, 360, 8); for (let c = 0; c < COLS; c++) addRing(px(c), py(1), "#8fe9b6", 30); }
+    else if (h.effect === "heal") { skillHeal(state); doFlash("rgba(120,230,170,.28)"); for (const c of state.cells) addRing(px(c.col), py(c.row), "#8fe9b6", 22); }
+    else { skillEnergy(state, 60); addNum(W / 2, 60, "⚡ +60", "#ffd36b"); }
+    addHeroPop(id); sfx.chime();
+  }
+  function updateSkillBar() {
+    for (const b of skillBtns) {
+      const id = b.dataset.skill!; const h = HERO_SKILLS.find((x) => x.id === id)!;
+      const cd = skillCd[id] ?? 0;
+      const cdEl = b.querySelector(".dk-cd") as HTMLElement;
+      cdEl.style.height = (cd > 0 ? (cd / h.cd) * 100 : 0) + "%";
+      cdEl.textContent = cd > 0 ? String(Math.ceil(cd)) : "";
+      b.classList.toggle("ready", cd <= 0 && state.energy >= h.cost && state.status === "playing");
+    }
+  }
+
   // 화면 좌표 헬퍼(플로팅/파티클)
   function toScreen(lx: number, ly: number) {
     const rect = canvas.getBoundingClientRect();
@@ -131,21 +184,56 @@ export function createDefenseGame(root: HTMLElement) {
     for (const ev of state.events) {
       if (ev.kind === "merge") { /* handled at drop */ }
       else if (ev.kind === "nofunds") { sfx.blocked(); }
-      else if (ev.kind === "hitcore") { sfx.blocked(); }
-      else if (ev.kind === "wave") { sfx.phase(); }
+      else if (ev.kind === "hitcore") { sfx.blocked(); shake = Math.max(shake, 5); doFlash("rgba(255,60,60,.22)"); }
+      else if (ev.kind === "wave") { sfx.phase(); showBanner(`WAVE ${state.wave + 1}`); }
+      else if (ev.kind === "boss") { sfx.win(); showBanner("⚠ 보스 등장!"); doFlash("rgba(200,80,255,.35)"); shake = Math.max(shake, 10); }
+      else if (ev.kind === "hit" && ev.col !== undefined && ev.y !== undefined) {
+        addSpark(px(ev.col), py(ev.y), "#ffe6a3", 3);
+        if ((ev.n ?? 0) >= 18 || Math.random() < 0.5) addNum(px(ev.col), py(ev.y), String(ev.n ?? 0), (ev.n ?? 0) >= 30 ? "#ffd36b" : "#fff");
+      }
       else if (ev.kind === "kill" && ev.col !== undefined && ev.y !== undefined) {
-        if (Math.random() < 0.5) burstAt(px(ev.col), py(ev.y), "#ffd36b");
+        addRing(px(ev.col), py(ev.y), "#ffd36b", 24);
+        if (Math.random() < 0.4) burstAt(px(ev.col), py(ev.y), "#ffd36b");
       }
       else if (ev.kind === "spawn" && ev.col !== undefined && ev.y !== undefined) {
-        sfx.circulate(); burstAt(px(ev.col), py(ev.y), "#8fe9b6");
+        sfx.circulate(); addRing(px(ev.col), py(ev.y), "#8fe9b6", 22);
       }
     }
     state.events.length = 0;
   }
+  function updateFx(dt: number) {
+    shake = Math.max(0, shake - dt * 26);
+    flash = Math.max(0, flash - dt);
+    bannerLife = Math.max(0, bannerLife - dt);
+    if (state.status === "playing") for (const k in skillCd) if (skillCd[k] > 0) skillCd[k] = Math.max(0, skillCd[k] - dt);
+    for (const f of fx) { f.life -= dt; f.x += f.vx * dt; f.y += f.vy * dt; if (f.kind === "spark") f.vy += 130 * dt; }
+    for (let i = fx.length - 1; i >= 0; i--) if (fx[i].life <= 0) fx.splice(i, 1);
+  }
+  function drawFxWorld() {
+    for (const f of fx) {
+      const a = Math.max(0, f.life / f.max);
+      if (f.kind === "num") { ctx.globalAlpha = a; ctx.fillStyle = f.color; ctx.font = "700 14px Jua, system-ui"; ctx.textAlign = "center"; ctx.fillText(f.text!, f.x, f.y); ctx.globalAlpha = 1; }
+      else if (f.kind === "spark") { ctx.globalAlpha = a; ctx.fillStyle = f.color; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+      else if (f.kind === "ring") { ctx.globalAlpha = a * 0.8; ctx.strokeStyle = f.color; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (1 - a), 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
+    }
+  }
+  function drawFxScreen() {
+    if (flash > 0) { ctx.globalAlpha = Math.min(1, flash / 0.5); ctx.fillStyle = flashColor; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+    const hero = fx.find((f) => f.kind === "hero");
+    if (hero && hero.img) { const a = hero.life / hero.max; const sc = 1.4 - a * 0.4; const s = 96 * sc; ctx.globalAlpha = Math.min(1, a * 1.6); ctx.drawImage(hero.img, W / 2 - s / 2, H * 0.36 - s / 2, s, s); ctx.globalAlpha = 1; }
+    if (bannerLife > 0) {
+      const a = Math.min(1, bannerLife / 0.4);
+      ctx.globalAlpha = a; ctx.textAlign = "center";
+      ctx.font = "700 30px Jua, system-ui"; ctx.fillStyle = "#fff"; ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.lineWidth = 4;
+      ctx.strokeText(banner, W / 2, H * 0.28); ctx.fillText(banner, W / 2, H * 0.28); ctx.globalAlpha = 1;
+    }
+  }
 
   // ── 렌더 ──
   function render() {
-    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "#120f18"; ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
     // 배경: 장기 아레나 (웨이브마다 다른 장기)
     const organ = ORGANS[Math.max(0, state.wave) % ORGANS.length];
     drawOrganBackground(ctx, organ, W, H - coreH, state.time);
@@ -188,6 +276,10 @@ export function createDefenseGame(root: HTMLElement) {
     }
     // 드래그 고스트
     if (drag) drawCell(ctx, drag.x, drag.y, r * 1.08, drag.cell, false, 0.5);
+    drawFxWorld();
+    ctx.restore();
+    drawFxScreen();
+    updateSkillBar();
 
     // HUD 갱신
     el.wave.textContent = state.wave < 0 ? "–" : `${state.wave + 1}/${state.totalWaves}`;
@@ -290,6 +382,7 @@ export function createDefenseGame(root: HTMLElement) {
     last = now;
     step(state, dt);
     processEvents();
+    updateFx(dt);
     if (state.status === "won" && !wonFx) {
       wonFx = true; lostFx = false;
       lastAward = runReward(state.totalWaves, state.kills, true);
@@ -579,7 +672,15 @@ function injectCss() {
   .d-ef { height:100%; background:linear-gradient(90deg,#ffd36b,#ffb27a); border-radius:99px; transition:width .15s; }
   .d-arena { position:relative; }
   .d-arena canvas { display:block; width:100%; border-radius:16px; box-shadow:0 8px 26px rgba(0,0,0,.4); touch-action:none; }
-  .d-controls { display:flex; gap:8px; margin-top:10px; }
+  .d-skills { display:flex; gap:7px; margin-top:9px; }
+  .d-skill { position:relative; flex:1; overflow:hidden; display:flex; flex-direction:column; align-items:center; gap:1px; background:#2b2634; border:1.5px solid #413a4f; border-radius:13px; padding:6px 3px 5px; cursor:pointer; opacity:.7; transition:opacity .15s,border-color .15s; }
+  .d-skill.ready { opacity:1; border-color:#8fe9b6; box-shadow:0 0 10px rgba(143,233,182,.3); }
+  .d-skill:active { transform:translateY(1px); }
+  .dk-art { width:34px; height:34px; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
+  .dk-nm { font-family:'Jua',sans-serif; font-size:11px; }
+  .dk-cost { font-size:9px; color:#ffd36b; }
+  .dk-cd { position:absolute; left:0; right:0; bottom:0; background:rgba(20,15,26,.78); color:#fff; font-family:'Jua',sans-serif; font-size:15px; display:flex; align-items:center; justify-content:center; height:0; transition:height .1s; }
+  .d-controls { display:flex; gap:8px; margin-top:9px; }
   .d-btn { flex:1; background:#352f40; color:#f5f0f7; border:none; border-radius:14px; padding:12px 6px; font:inherit; font-size:14px; cursor:pointer; box-shadow:0 3px 0 rgba(0,0,0,.2); }
   .d-btn small { display:block; font-size:11px; color:#ada3ba; margin-top:2px; }
   .d-btn.on { background:linear-gradient(160deg,#8fe9b6,#6fe0a6); color:#16311f; }
