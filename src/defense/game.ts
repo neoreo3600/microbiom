@@ -137,16 +137,25 @@ export function createDefenseGame(root: HTMLElement) {
   // ── 렌더 ──
   function render() {
     ctx.clearRect(0, 0, W, H);
-    // 배경(몸 내부)
-    const bg = ctx.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, "#2a2331"); bg.addColorStop(1, "#171420");
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    // 배경: 장기 아레나 (웨이브마다 다른 장기)
+    const organ = ORGANS[Math.max(0, state.wave) % ORGANS.length];
+    drawOrganBackground(ctx, organ, W, H - coreH, state.time);
+    // 방어 구역(하단 2행 = 내 조직) — 기지 지대 표시
+    const zoneY = py(ROWS - 2) - rowH / 2;
+    const zg = ctx.createLinearGradient(0, zoneY, 0, H - coreH);
+    zg.addColorStop(0, "rgba(111,224,166,0)"); zg.addColorStop(1, "rgba(111,224,166,.1)");
+    ctx.fillStyle = zg; ctx.fillRect(0, zoneY, W, (H - coreH) - zoneY);
+    ctx.strokeStyle = "rgba(111,224,166,.28)"; ctx.lineWidth = 1.5; ctx.setLineDash([7, 6]);
+    ctx.beginPath(); ctx.moveTo(0, zoneY); ctx.lineTo(W, zoneY); ctx.stroke(); ctx.setLineDash([]);
     // 슬롯 그리드
     for (let c = 0; c < COLS; c++) for (let rw = 0; rw < ROWS; rw++) {
-      roundRect(ctx, c * colW + 3, py(rw) - rowH / 2 + 2, colW - 6, rowH - 4, 9);
-      ctx.fillStyle = ((c + rw) % 2 === 0) ? "rgba(255,255,255,.028)" : "rgba(255,255,255,.015)";
-      ctx.fill();
+      roundRect(ctx, c * colW + 3, py(rw) - rowH / 2 + 2, colW - 6, rowH - 4, 10);
+      ctx.fillStyle = "rgba(255,255,255,.04)"; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(255,255,255,.05)"; ctx.stroke();
     }
+    // 장기 이름(은은하게)
+    ctx.fillStyle = "rgba(255,255,255,.32)"; ctx.font = "700 12px Jua, system-ui"; ctx.textAlign = "center";
+    ctx.fillText(ORGAN_INFO[organ].name + " 방어", W / 2, 20);
     // 거점 막(하단)
     const coreY = H - coreH;
     const chp = Math.max(0, state.coreHp) / state.coreMax;
@@ -166,7 +175,7 @@ export function createDefenseGame(root: HTMLElement) {
     // 적
     for (const e of state.enemies) {
       const d = state.cfg.enemies[e.type];
-      drawEnemy(ctx, px(e.col), py(e.y), r * (d.boss ? 1.55 : 1), d.hue, e.hp / e.maxHp, e.hit > 0, !!d.boss);
+      drawEnemy(ctx, px(e.col), py(e.y), r * (d.boss ? 1.55 : 1), e.type, d.hue, e.hp / e.maxHp, e.hit > 0, !!d.boss, state.time);
     }
     // 드래그 고스트
     if (drag) drawCell(ctx, drag.x, drag.y, r * 1.08, drag.cell, false, 0.5);
@@ -251,25 +260,20 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 const TIER_HUE = [205, 150, 275, 340];
-function drawCell(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, c: Cell, dragging: boolean, alpha = 1) {
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  if (c.kind === "wall") {
-    roundRect(ctx, cx - r, cy - r, r * 2, r * 2, r * 0.4);
-    const g = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
-    g.addColorStop(0, "hsl(150 30% 52%)"); g.addColorStop(1, "hsl(150 30% 32%)");
-    ctx.fillStyle = g; ctx.fill();
-    ctx.strokeStyle = "hsl(150 30% 26%)"; ctx.lineWidth = 2; ctx.stroke();
-    hpBar(ctx, cx, cy + r + 3, r, c.hp / c.maxHp);
-    ctx.restore(); return;
+
+// 각도→반지름 함수로 닫힌 실루엣 경로
+function polarPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, fn: (a: number) => number, steps = 44) {
+  ctx.beginPath();
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    const rr = fn(a);
+    const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   }
-  const hue = TIER_HUE[c.tier - 1] ?? 205;
-  const g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.2, cx, cy, r);
-  g.addColorStop(0, `hsl(${hue} 66% 74%)`); g.addColorStop(0.6, `hsl(${hue} 55% 56%)`); g.addColorStop(1, `hsl(${hue} 50% 40%)`);
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = g; ctx.fill();
-  ctx.lineWidth = 2; ctx.strokeStyle = `hsl(${hue} 50% 32%)`; ctx.stroke();
-  // 얼굴
-  const ink = `hsl(${hue} 45% 22%)`;
+  ctx.closePath();
+}
+
+function cellFace(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, ink: string) {
   ctx.fillStyle = ink;
   ctx.beginPath(); ctx.ellipse(cx - r * 0.3, cy - r * 0.03, r * 0.12, r * 0.17, 0, 0, 7); ctx.fill();
   ctx.beginPath(); ctx.ellipse(cx + r * 0.3, cy - r * 0.03, r * 0.12, r * 0.17, 0, 0, 7); ctx.fill();
@@ -277,44 +281,186 @@ function drawCell(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numb
   ctx.beginPath(); ctx.arc(cx - r * 0.25, cy - r * 0.1, r * 0.045, 0, 7); ctx.fill();
   ctx.beginPath(); ctx.arc(cx + r * 0.35, cy - r * 0.1, r * 0.045, 0, 7); ctx.fill();
   ctx.strokeStyle = ink; ctx.lineWidth = Math.max(1, r * 0.08); ctx.lineCap = "round";
-  ctx.beginPath(); ctx.arc(cx, cy + r * 0.1, r * 0.26, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
-  // 티어 핍(금색)
-  for (let i = 0; i < c.tier; i++) {
-    const a = -Math.PI / 2 + (i - (c.tier - 1) / 2) * 0.5;
-    ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r * 0.72, cy + Math.sin(a) * r * 0.72, r * 0.1, 0, 7);
-    ctx.fillStyle = "#ffd36b"; ctx.fill();
-  }
-  if (c.flash > 0) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = `rgba(255,255,255,${Math.min(0.6, c.flash * 2)})`; ctx.fill(); }
-  if (c.hp < c.maxHp) hpBar(ctx, cx, cy + r + 3, r, c.hp / c.maxHp);
-  ctx.restore();
-  void dragging;
+  ctx.beginPath(); ctx.arc(cx, cy + r * 0.1, r * 0.24, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
 }
 
-function drawEnemy(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, hue: number, hpFrac: number, hit: boolean, boss: boolean) {
+function drawCell(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, c: Cell, dragging: boolean, alpha = 1) {
   ctx.save();
-  // 가시(스파이크)
-  const spikes = boss ? 14 : 9;
-  ctx.beginPath();
-  for (let i = 0; i < spikes * 2; i++) {
-    const a = (i / (spikes * 2)) * Math.PI * 2;
-    const rr = i % 2 === 0 ? r * 1.28 : r * 0.96;
-    const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  ctx.globalAlpha = alpha;
+  void dragging;
+  if (c.kind === "wall") {
+    // 바이오필름 방벽 — 육각 타일 방패
+    polarPath(ctx, cx, cy + 1, (a) => r * 1.05 * (1 + 0.06 * Math.cos(6 * a)), 6);
+    const g = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
+    g.addColorStop(0, "hsl(158 34% 54%)"); g.addColorStop(1, "hsl(158 34% 32%)");
+    ctx.fillStyle = g; ctx.fill();
+    ctx.strokeStyle = "hsl(158 34% 24%)"; ctx.lineWidth = 2.4; ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(cx, cy + 1, r * (0.4 + i * 0.28), 0, 7); ctx.stroke(); }
+    hpBar(ctx, cx, cy + r + 3, r, c.hp / c.maxHp);
+    ctx.restore(); return;
   }
-  ctx.closePath();
-  const g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.2, cx, cy, r * 1.2);
-  g.addColorStop(0, `hsl(${hue} 55% 52%)`); g.addColorStop(1, `hsl(${hue} 60% 30%)`);
-  ctx.fillStyle = g; ctx.fill();
-  ctx.strokeStyle = `hsl(${hue} 60% 22%)`; ctx.lineWidth = 1.5; ctx.stroke();
-  // 성난 눈
-  const ink = `hsl(${hue} 70% 14%)`;
+  const hue = TIER_HUE[c.tier - 1] ?? 205;
+  const g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.2, cx, cy, r * 1.25);
+  g.addColorStop(0, `hsl(${hue} 68% 76%)`); g.addColorStop(0.6, `hsl(${hue} 56% 56%)`); g.addColorStop(1, `hsl(${hue} 52% 38%)`);
+  const stroke = `hsl(${hue} 52% 30%)`;
+  ctx.lineJoin = "round";
+
+  if (c.tier === 1) {
+    // 호중구 — 다엽핵 느낌의 우툴두툴한 원 + 과립
+    polarPath(ctx, cx, cy, (a) => r * (1 + 0.07 * Math.sin(3 * a + 0.4)));
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = stroke; ctx.stroke();
+    ctx.fillStyle = `hsl(${hue} 45% 44%)`;
+    for (const [dx, dy] of [[-0.35, 0.35], [0.3, 0.4], [0.05, 0.5], [-0.5, 0.05]]) {
+      ctx.beginPath(); ctx.arc(cx + dx * r, cy + dy * r, r * 0.09, 0, 7); ctx.fill();
+    }
+  } else if (c.tier === 2) {
+    // 대식세포 — 위족(pseudopod)이 뻗은 아메바
+    polarPath(ctx, cx, cy, (a) => r * 1.08 * (1 + 0.13 * Math.sin(3 * a) + 0.05 * Math.sin(6 * a + 1)));
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = stroke; ctx.stroke();
+  } else if (c.tier === 3) {
+    // T세포 — 각진 몸 + 수용체 가시
+    ctx.strokeStyle = stroke; ctx.lineWidth = 2.2;
+    for (let i = 0; i < 7; i++) {
+      const a = -Math.PI / 2 + (i / 7) * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r * 0.9, cy + Math.sin(a) * r * 0.9);
+      ctx.lineTo(cx + Math.cos(a) * r * 1.22, cy + Math.sin(a) * r * 1.22); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r * 1.28, cy + Math.sin(a) * r * 1.28, r * 0.08, 0, 7);
+      ctx.fillStyle = `hsl(${hue} 60% 60%)`; ctx.fill();
+    }
+    polarPath(ctx, cx, cy, (a) => r * (0.94 + 0.1 * Math.cos(6 * a)), 6);
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = stroke; ctx.stroke();
+  } else {
+    // NK세포 — 결정형 스타 + 발광
+    ctx.shadowColor = `hsl(${hue} 90% 60%)`; ctx.shadowBlur = 10;
+    ctx.beginPath();
+    for (let i = 0; i < 16; i++) {
+      const a = -Math.PI / 2 + (i / 16) * Math.PI * 2;
+      const rr = i % 2 === 0 ? r * 1.26 : r * 0.74;
+      const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = g; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 2; ctx.strokeStyle = stroke; ctx.stroke();
+  }
+
+  cellFace(ctx, cx, cy, r, `hsl(${hue} 45% 22%)`);
+  for (let i = 0; i < c.tier; i++) {
+    const a = -Math.PI / 2 + (i - (c.tier - 1) / 2) * 0.42;
+    ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r * 0.78, cy + Math.sin(a) * r * 0.78, r * 0.1, 0, 7);
+    ctx.fillStyle = "#ffd36b"; ctx.fill();
+  }
+  if (c.flash > 0) { ctx.beginPath(); ctx.arc(cx, cy, r * 1.15, 0, 7); ctx.fillStyle = `rgba(255,255,255,${Math.min(0.6, c.flash * 2)})`; ctx.fill(); }
+  if (c.hp < c.maxHp) hpBar(ctx, cx, cy + r + 4, r, c.hp / c.maxHp);
+  ctx.restore();
+}
+
+function drawEnemy(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, type: string, hue: number, hpFrac: number, hit: boolean, boss: boolean, t: number) {
+  ctx.save();
+  ctx.lineJoin = "round";
+  const g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.2, cx, cy, r * 1.3);
+  g.addColorStop(0, `hsl(${hue} 55% 54%)`); g.addColorStop(1, `hsl(${hue} 62% 28%)`);
+  const stroke = `hsl(${hue} 62% 20%)`;
+  const ink = `hsl(${hue} 70% 12%)`;
+
+  if (type === "badbac") {
+    // 유해균 — 간균(막대) + 편모
+    ctx.strokeStyle = `hsl(${hue} 55% 40%)`; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+    for (const sx of [-0.5, 0.5]) {
+      ctx.beginPath(); ctx.moveTo(cx + sx * r * 0.5, cy - r * 0.7);
+      ctx.quadraticCurveTo(cx + sx * r * 1.3, cy - r * 1.3 + Math.sin(t * 4 + sx) * 3, cx + sx * r * 0.9, cy - r * 1.7); ctx.stroke();
+    }
+    roundRect(ctx, cx - r * 0.62, cy - r * 1.05, r * 1.24, r * 2.1, r * 0.6);
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = stroke; ctx.stroke();
+  } else if (type === "inflam") {
+    // 염증세포 — 뾰족한 불꽃형
+    ctx.beginPath();
+    for (let i = 0; i < 20; i++) {
+      const a = (i / 20) * Math.PI * 2;
+      const rr = i % 2 === 0 ? r * 1.35 : r * 0.82;
+      const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 1.4; ctx.strokeStyle = stroke; ctx.stroke();
+  } else {
+    // 암세포(보스) — 여러 덩어리가 뭉친 불규칙 종괴
+    for (const [dx, dy, s] of [[0, 0, 1], [-0.55, -0.2, 0.7], [0.5, -0.3, 0.65], [0.2, 0.5, 0.7], [-0.4, 0.45, 0.6]] as const) {
+      ctx.beginPath(); ctx.arc(cx + dx * r, cy + dy * r, r * s, 0, 7);
+      ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = stroke; ctx.stroke();
+    }
+    ctx.fillStyle = `hsl(${hue} 50% 40%)`;
+    for (const [dx, dy] of [[-0.3, -0.1], [0.35, 0.2], [0.1, 0.55]]) { ctx.beginPath(); ctx.arc(cx + dx * r, cy + dy * r, r * 0.14, 0, 7); ctx.fill(); }
+  }
+  // 성난 얼굴
   ctx.fillStyle = ink;
-  ctx.beginPath(); ctx.ellipse(cx - r * 0.32, cy - r * 0.02, r * 0.14, r * 0.1, -0.4, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx + r * 0.32, cy - r * 0.02, r * 0.14, r * 0.1, 0.4, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx - r * 0.3, cy - r * 0.05, r * 0.14, r * 0.1, -0.4, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + r * 0.3, cy - r * 0.05, r * 0.14, r * 0.1, 0.4, 0, 7); ctx.fill();
   ctx.strokeStyle = ink; ctx.lineWidth = Math.max(1, r * 0.09); ctx.lineCap = "round";
-  ctx.beginPath(); ctx.arc(cx, cy + r * 0.5, r * 0.24, 1.15 * Math.PI, 1.85 * Math.PI); ctx.stroke(); // 찡그림
-  if (hit) { ctx.beginPath(); ctx.arc(cx, cy, r * 1.1, 0, 7); ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.fill(); }
-  hpBar(ctx, cx, cy - r * 1.4, r * (boss ? 1.2 : 1), hpFrac, boss);
+  ctx.beginPath(); ctx.arc(cx, cy + r * 0.5, r * 0.22, 1.15 * Math.PI, 1.85 * Math.PI); ctx.stroke();
+  if (hit) { ctx.beginPath(); ctx.arc(cx, cy, r * 1.25, 0, 7); ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.fill(); }
+  hpBar(ctx, cx, cy - r * (boss ? 1.7 : 1.5), r * (boss ? 1.2 : 1), hpFrac, boss);
+  ctx.restore();
+}
+
+// ── 장기 아레나 배경 ───────────────────────────────────────────
+export const ORGANS = ["gut", "liver", "lung", "heart"] as const;
+export type OrganKey = (typeof ORGANS)[number];
+export const ORGAN_INFO: Record<OrganKey, { name: string; h: number; s: number }> = {
+  gut: { name: "장(腸)", h: 344, s: 40 },
+  liver: { name: "간(肝)", h: 14, s: 46 },
+  lung: { name: "폐(肺)", h: 318, s: 28 },
+  heart: { name: "심장(心)", h: 2, s: 50 },
+};
+
+export function drawOrganBackground(ctx: CanvasRenderingContext2D, organ: OrganKey, W: number, H: number, t: number) {
+  const { h, s } = ORGAN_INFO[organ];
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, `hsl(${h} ${s}% 15%)`); bg.addColorStop(1, `hsl(${h} ${s}% 9%)`);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H + 40);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+  const light = `hsl(${h} ${s}% 32%)`;
+  if (organ === "gut") {
+    // 융모(villi) — 세로 손가락 주름
+    for (let i = 0; i < 7; i++) {
+      const x = (i + 0.5) * (W / 7) + Math.sin(t * 0.6 + i) * 5;
+      const g = ctx.createLinearGradient(x, 0, x, H);
+      g.addColorStop(0, `hsla(${h} ${s}% 40% / .16)`); g.addColorStop(1, `hsla(${h} ${s}% 40% / 0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.ellipse(x, H * 0.36, W / 16, H * 0.42, 0, 0, 7); ctx.fill();
+    }
+  } else if (organ === "liver") {
+    // 간소엽 — 육각 격자
+    ctx.strokeStyle = `hsla(${h} ${s}% 42% / .16)`; ctx.lineWidth = 1.4;
+    const R = W / 8;
+    for (let ry = -1; ry < H / (R * 1.5) + 1; ry++) for (let rx = -1; rx < W / (R * 1.73) + 2; rx++) {
+      const ox = rx * R * 1.73 + (ry % 2 ? R * 0.87 : 0), oy = ry * R * 1.5;
+      polarPath(ctx, ox, oy, () => R, 6); ctx.stroke();
+    }
+  } else if (organ === "lung") {
+    // 폐포 — 방울 군집
+    for (let i = 0; i < 26; i++) {
+      const x = ((i * 97) % 100) / 100 * W, y = ((i * 61) % 100) / 100 * H;
+      ctx.beginPath(); ctx.arc(x, y, W * 0.05 + (i % 3) * 6, 0, 7);
+      ctx.fillStyle = `hsla(${h} ${s}% 44% / .1)`; ctx.fill();
+    }
+  } else {
+    // 심장 — 근섬유 사선 결
+    ctx.strokeStyle = `hsla(${h} ${s}% 42% / .12)`; ctx.lineWidth = 2;
+    for (let i = -2; i < W / 22 + 2; i++) {
+      ctx.beginPath(); ctx.moveTo(i * 22, 0); ctx.lineTo(i * 22 + H * 0.4, H); ctx.stroke();
+    }
+  }
+  // 혈관 — 갈라지는 곡선 + 은은한 맥동
+  ctx.strokeStyle = `hsla(${h} ${s + 10}% 50% / ${0.14 + 0.04 * Math.sin(t * 1.5)})`;
+  ctx.lineWidth = 3; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(W * 0.1, -10); ctx.bezierCurveTo(W * 0.3, H * 0.3, W * 0.1, H * 0.6, W * 0.35, H + 10); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W * 0.85, -10); ctx.bezierCurveTo(W * 0.7, H * 0.4, W * 0.95, H * 0.7, W * 0.7, H + 10); ctx.stroke();
+  // 상단 광원 + 하단 비네트
+  const gl = ctx.createRadialGradient(W / 2, H * 0.15, 10, W / 2, H * 0.15, W * 0.7);
+  gl.addColorStop(0, `hsla(${h} ${s}% 40% / .2)`); gl.addColorStop(1, "hsla(0 0% 0% / 0)");
+  ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
+  void light;
   ctx.restore();
 }
 
