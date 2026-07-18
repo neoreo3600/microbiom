@@ -10,13 +10,17 @@ const PROJ_SPEED = 13; // 칸/초
 export interface CellDef { tier: number; name: string; hue: number; hp: number; atk: number; rate: number; range: number; }
 export interface EnemyDef { type: string; name: string; hue: number; hp: number; speed: number; atk: number; bounty: number; radius: number; boss?: boolean; }
 export interface WaveSpawn { type: string; n: number; gap: number; }
+export interface OrganTrait { regenMul: number; bountyMul: number; rangeBonus: number; rateMul: number; }
 export interface DefenseConfig {
   tiers: CellDef[];
   enemies: Record<string, EnemyDef>;
   waves: WaveSpawn[][];
+  organTraits: OrganTrait[];
   wallHp: number; wallCost: number; t1Cost: number;
   coreHp: number; energyStart: number; energyRegen: number; intermissionSec: number;
 }
+
+const NEUTRAL_TRAIT: OrganTrait = { regenMul: 1, bountyMul: 1, rangeBonus: 0, rateMul: 1 };
 
 export interface Cell { id: number; col: number; row: number; kind: "immune" | "wall"; tier: number; hp: number; maxHp: number; cd: number; flash: number; }
 export interface Enemy { id: number; type: string; col: number; y: number; hp: number; maxHp: number; atkCd: number; hit: number; }
@@ -28,12 +32,20 @@ export interface DefenseState {
   cells: Cell[]; enemies: Enemy[]; projectiles: Projectile[];
   energy: number; coreHp: number; coreMax: number;
   wave: number; totalWaves: number;
-  status: "ready" | "playing" | "won" | "lost";
+  status: "ready" | "playing" | "shop" | "won" | "lost";
   time: number; intermission: number;
   queue: Spawn[]; spawned: number;
   nextId: number; kills: number;
-  events: { kind: "kill" | "merge" | "place" | "hitcore" | "wave" | "nofunds"; col?: number; y?: number; }[];
+  ip: number; upg: Record<string, number>; marrowTimer: number;
+  events: { kind: "kill" | "merge" | "place" | "hitcore" | "wave" | "nofunds" | "buy" | "spawn"; col?: number; y?: number; }[];
 }
+
+/** 현재 웨이브의 장기 특성 */
+export function organTraitOf(s: DefenseState): OrganTrait {
+  if (s.wave < 0 || s.cfg.organTraits.length === 0) return NEUTRAL_TRAIT;
+  return s.cfg.organTraits[s.wave % s.cfg.organTraits.length];
+}
+const dmgMulOf = (s: DefenseState) => 1 + (s.upg.dmg ?? 0) * 0.15;
 
 let idc = 1;
 const nid = () => idc++;
@@ -44,8 +56,38 @@ export function createDefenseState(cfg: DefenseConfig): DefenseState {
     energy: cfg.energyStart, coreHp: cfg.coreHp, coreMax: cfg.coreHp,
     wave: -1, totalWaves: cfg.waves.length,
     status: "ready", time: 0, intermission: 0,
-    queue: [], spawned: 0, nextId: 0, kills: 0, events: [],
+    queue: [], spawned: 0, nextId: 0, kills: 0,
+    ip: 0, upg: {}, marrowTimer: 0, events: [],
   };
+}
+
+/** 강화 구매 (IP 소비). 반환=성공 */
+export function shopCost(s: DefenseState, item: { id: string; baseCost: number; costStep: number }): number {
+  return item.baseCost + (s.upg[item.id] ?? 0) * item.costStep;
+}
+export function buyUpgrade(s: DefenseState, item: { id: string; baseCost: number; costStep: number }): boolean {
+  const cost = shopCost(s, item);
+  if (s.ip < cost) { s.events.push({ kind: "nofunds" }); return false; }
+  s.ip -= cost;
+  s.upg[item.id] = (s.upg[item.id] ?? 0) + 1;
+  if (item.id === "core") { s.coreMax += 30; s.coreHp = Math.min(s.coreMax, s.coreHp + 30); }
+  s.events.push({ kind: "buy" });
+  return true;
+}
+
+/** 상점에서 다음 웨이브로 */
+export function nextWave(s: DefenseState): void {
+  if (s.status !== "shop") return;
+  s.status = "playing";
+  loadWave(s, s.wave + 1);
+}
+
+function baseEmptySlot(s: DefenseState): { col: number; row: number } | undefined {
+  const slots: { col: number; row: number }[] = [];
+  for (let col = 0; col < COLS; col++) for (let row = ROWS - 2; row < ROWS; row++) {
+    if (!cellAt(s, col, row)) slots.push({ col, row });
+  }
+  return slots.length ? slots[Math.floor(Math.random() * slots.length)] : undefined;
 }
 
 export function startGame(s: DefenseState): void {
@@ -123,12 +165,30 @@ export function step(s: DefenseState, dt: number): void {
     s.enemies.push({ id: nid(), type: sp.type, col: sp.col, y: -0.6, hp: d.hp, maxHp: d.hp, atkCd: 0, hit: 0 });
   }
 
-  // 웨이브 전환/승리
+  const trait = organTraitOf(s);
+
+  // 골수 이식(자동 생산)
+  if ((s.upg.marrow ?? 0) > 0) {
+    s.marrowTimer += dt;
+    const interval = Math.max(6, 15 - ((s.upg.marrow ?? 1) - 1) * 3);
+    if (s.marrowTimer >= interval) {
+      s.marrowTimer = 0;
+      const slot = baseEmptySlot(s);
+      if (slot) {
+        const d0 = s.cfg.tiers[0];
+        s.cells.push({ id: nid(), col: slot.col, row: slot.row, kind: "immune", tier: 1, hp: d0.hp, maxHp: d0.hp, cd: 0, flash: 0.3 });
+        s.events.push({ kind: "spawn", col: slot.col, y: slot.row });
+      }
+    }
+  }
+
+  // 웨이브 전환 → 상점 / 승리
   const doneSpawning = s.spawned >= s.queue.length;
   if (doneSpawning && s.enemies.length === 0) {
     if (s.wave + 1 < s.cfg.waves.length) {
-      s.intermission += dt;
-      if (s.intermission >= s.cfg.intermissionSec) { s.intermission = 0; loadWave(s, s.wave + 1); }
+      s.ip += 10 + s.wave * 5; // 웨이브 클리어 보상
+      s.status = "shop";
+      return;
     } else {
       s.status = "won";
       return;
@@ -160,17 +220,18 @@ export function step(s: DefenseState, dt: number): void {
     c.cd -= dt;
     const d = s.cfg.tiers[c.tier - 1];
     if (c.cd <= 0) {
+      const range = d.range + trait.rangeBonus;
       // 같은 열, 세포 위쪽(작은 y) 사거리 내 가장 가까운(=가장 큰 y) 적
       let target: Enemy | undefined;
       for (const e of s.enemies) {
         if (e.col !== c.col || e.hp <= 0) continue;
-        if (e.y <= c.row + 0.2 && e.y >= c.row - d.range) {
+        if (e.y <= c.row + 0.2 && e.y >= c.row - range) {
           if (!target || e.y > target.y) target = e;
         }
       }
       if (target) {
-        s.projectiles.push({ id: nid(), col: c.col, y: c.row - 0.3, ty: target.y, dmg: d.atk, hue: d.hue });
-        c.cd = 1 / d.rate;
+        s.projectiles.push({ id: nid(), col: c.col, y: c.row - 0.3, ty: target.y, dmg: d.atk * dmgMulOf(s), hue: d.hue });
+        c.cd = (1 / d.rate) * trait.rateMul;
       }
     }
   }
@@ -197,13 +258,13 @@ export function step(s: DefenseState, dt: number): void {
   for (const e of s.enemies) {
     if (e.hp <= 0) {
       const d = s.cfg.enemies[e.type];
-      if (e.y < ROWS) { s.energy += d.bounty; s.kills++; s.events.push({ kind: "kill", col: e.col, y: e.y }); }
+      if (e.y < ROWS) { s.energy += d.bounty * trait.bountyMul; s.ip += 1; s.kills++; s.events.push({ kind: "kill", col: e.col, y: e.y }); }
     } else alive.push(e);
   }
   s.enemies = alive;
   s.cells = s.cells.filter((c) => c.hp > 0);
 
   // 에너지 재생 / 패배
-  s.energy += s.cfg.energyRegen * dt;
+  s.energy += (s.cfg.energyRegen + (s.upg.regen ?? 0) * 2) * trait.regenMul * dt;
   if (s.coreHp <= 0) { s.coreHp = 0; s.status = "lost"; }
 }

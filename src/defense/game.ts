@@ -4,9 +4,9 @@
 
 import {
   COLS, ROWS, createDefenseState, startGame, step, placeCell, placeWall,
-  cellAt, dropCell, type DefenseState, type Cell,
+  cellAt, dropCell, buyUpgrade, nextWave, shopCost, type DefenseState, type Cell,
 } from "./engine";
-import { DEFENSE_CONFIG } from "./content";
+import { DEFENSE_CONFIG, SHOP, ORGANS, ORGAN_INFO, type OrganKey } from "./content";
 import { sfx, floatText, burst, confetti } from "../game/juice";
 
 const ENEMY_NAME: Record<string, string> = { badbac: "유해균", inflam: "염증세포", boss_cancer: "암세포" };
@@ -16,10 +16,10 @@ export function createDefenseGame(root: HTMLElement) {
   root.classList.add("d-root");
   root.innerHTML = `
     <div class="d-top">
-      <div>웨이브 <b id="d-wave">–</b></div>
-      <div class="d-core">🛡 거점<div class="d-bar"><div id="d-coref" class="d-coref"></div></div></div>
+      <div>웨이브 <b id="d-wave">–</b> <span id="d-organ" class="d-organ"></span></div>
+      <div class="d-core">🛡<div class="d-bar"><div id="d-coref" class="d-coref"></div></div></div>
     </div>
-    <div class="d-energy">⚡<b id="d-energy">0</b><div class="d-bar wide"><div id="d-ef" class="d-ef"></div></div></div>
+    <div class="d-energy">⚡<b id="d-energy">0</b><div class="d-bar wide"><div id="d-ef" class="d-ef"></div></div><span class="d-ip">🧬<b id="d-ip">0</b></span></div>
     <div class="d-arena"><canvas id="d-canvas"></canvas><div id="d-overlay" class="d-overlay"></div></div>
     <div class="d-controls">
       <button class="d-btn on" data-mode="cell">🦠 호중구 <small>${DEFENSE_CONFIG.t1Cost}</small></button>
@@ -32,9 +32,11 @@ export function createDefenseGame(root: HTMLElement) {
   const overlay = root.querySelector("#d-overlay") as HTMLElement;
   const el = {
     wave: root.querySelector("#d-wave") as HTMLElement,
+    organ: root.querySelector("#d-organ") as HTMLElement,
     energy: root.querySelector("#d-energy") as HTMLElement,
     coref: root.querySelector("#d-coref") as HTMLElement,
     ef: root.querySelector("#d-ef") as HTMLElement,
+    ip: root.querySelector("#d-ip") as HTMLElement,
   };
 
   let state = createDefenseState(DEFENSE_CONFIG);
@@ -130,6 +132,9 @@ export function createDefenseGame(root: HTMLElement) {
       else if (ev.kind === "kill" && ev.col !== undefined && ev.y !== undefined) {
         if (Math.random() < 0.5) burstAt(px(ev.col), py(ev.y), "#ffd36b");
       }
+      else if (ev.kind === "spawn" && ev.col !== undefined && ev.y !== undefined) {
+        sfx.circulate(); burstAt(px(ev.col), py(ev.y), "#8fe9b6");
+      }
     }
     state.events.length = 0;
   }
@@ -182,9 +187,11 @@ export function createDefenseGame(root: HTMLElement) {
 
     // HUD 갱신
     el.wave.textContent = state.wave < 0 ? "–" : `${state.wave + 1}/${state.totalWaves}`;
+    el.organ.textContent = ORGAN_INFO[organ].trait;
     el.energy.textContent = String(Math.floor(state.energy));
     el.coref.style.width = (chp * 100).toFixed(0) + "%";
     el.ef.style.width = Math.min(100, state.energy / 1.5).toFixed(0) + "%";
+    el.ip.textContent = String(state.ip);
 
     renderOverlay();
   }
@@ -215,6 +222,8 @@ export function createDefenseGame(root: HTMLElement) {
         <p>웨이브 ${state.wave + 1}에서 무너졌습니다. 처치 <b>${state.kills}</b></p>
         <button class="d-start" data-act="restart2">다시 도전</button></div>`;
       wire2();
+    } else if (state.status === "shop") {
+      renderShopPanel();
     } else {
       overlay.hidden = true;
     }
@@ -222,6 +231,30 @@ export function createDefenseGame(root: HTMLElement) {
   function wire2() {
     const b = overlay.querySelector('[data-act="restart2"]') as HTMLElement | null;
     if (b) b.addEventListener("click", () => { state = createDefenseState(DEFENSE_CONFIG); startGame(state); sfx.phase(); });
+  }
+  function renderShopPanel() {
+    overlay.hidden = false;
+    const nextOrgan = ORGANS[(state.wave + 1) % ORGANS.length];
+    const items = SHOP.map((it) => {
+      const cost = shopCost(state, it);
+      const lv = state.upg[it.id] ?? 0;
+      const can = state.ip >= cost;
+      return `<button class="d-shop-item ${can ? "" : "dis"}" data-buy="${it.id}" ${can ? "" : "disabled"}>
+        <span class="si-ic">${it.icon}</span>
+        <span class="si-tx"><b>${it.name}</b>${lv ? ` <small>Lv${lv}</small>` : ""}<br><small>${it.desc}</small></span>
+        <span class="si-cost">🧬${cost}</span></button>`;
+    }).join("");
+    overlay.innerHTML = `<div class="d-card shop"><div class="d-t win">웨이브 ${state.wave + 1} 클리어! 🎉</div>
+      <p>면역 포인트 <b>🧬${state.ip}</b> · 강화로 다음 침입에 대비하세요.</p>
+      <div class="d-shop">${items}</div>
+      <button class="d-start" data-act="next">다음 웨이브 → ${ORGAN_INFO[nextOrgan].name}</button></div>`;
+    overlay.querySelectorAll<HTMLElement>("[data-buy]").forEach((b) => b.addEventListener("click", () => {
+      const it = SHOP.find((x) => x.id === b.dataset.buy)!;
+      if (buyUpgrade(state, it)) sfx.chime(); else sfx.blocked();
+      renderShopPanel();
+    }));
+    const nb = overlay.querySelector('[data-act="next"]') as HTMLElement | null;
+    if (nb) nb.addEventListener("click", () => { nextWave(state); sfx.phase(); });
   }
 
   let wonFx = false, lostFx = false;
@@ -402,16 +435,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: num
   ctx.restore();
 }
 
-// ── 장기 아레나 배경 ───────────────────────────────────────────
-export const ORGANS = ["gut", "liver", "lung", "heart"] as const;
-export type OrganKey = (typeof ORGANS)[number];
-export const ORGAN_INFO: Record<OrganKey, { name: string; h: number; s: number }> = {
-  gut: { name: "장(腸)", h: 344, s: 40 },
-  liver: { name: "간(肝)", h: 14, s: 46 },
-  lung: { name: "폐(肺)", h: 318, s: 28 },
-  heart: { name: "심장(心)", h: 2, s: 50 },
-};
-
+// ── 장기 아레나 배경 (ORGANS/ORGAN_INFO 는 content.ts) ───────────
 export function drawOrganBackground(ctx: CanvasRenderingContext2D, organ: OrganKey, W: number, H: number, t: number) {
   const { h, s } = ORGAN_INFO[organ];
   const bg = ctx.createLinearGradient(0, 0, 0, H);
@@ -483,6 +507,19 @@ function injectCss() {
   .d-coref { height:100%; background:linear-gradient(90deg,#7fe0a6,#6cc6f5); border-radius:99px; transition:width .2s; }
   .d-energy { display:flex; align-items:center; gap:6px; font-size:13px; margin-bottom:8px; }
   .d-energy b { font-family:'Jua',sans-serif; color:#ffd36b; min-width:26px; }
+  .d-organ { font-size:11px; color:#c9a2f7; }
+  .d-ip { display:flex; align-items:center; gap:2px; font-size:13px; flex:0 0 auto; }
+  .d-ip b { font-family:'Jua',sans-serif; color:#8fe9b6; }
+  .d-card.shop { max-width:360px; }
+  .d-shop { display:flex; flex-direction:column; gap:8px; margin:6px 0 14px; }
+  .d-shop-item { display:flex; align-items:center; gap:10px; background:#352f40; border:none; border-radius:12px; padding:10px 12px; color:#f5f0f7; font:inherit; text-align:left; cursor:pointer; box-shadow:0 2px 0 rgba(0,0,0,.2); }
+  .d-shop-item:active { transform:translateY(1px); }
+  .d-shop-item.dis { opacity:.45; }
+  .si-ic { font-size:22px; flex:0 0 auto; }
+  .si-tx { flex:1; font-size:12px; line-height:1.35; }
+  .si-tx b { font-family:'Jua',sans-serif; font-size:14px; }
+  .si-tx small { color:#ada3ba; }
+  .si-cost { font-family:'Jua',sans-serif; color:#8fe9b6; white-space:nowrap; }
   .d-ef { height:100%; background:linear-gradient(90deg,#ffd36b,#ffb27a); border-radius:99px; transition:width .15s; }
   .d-arena { position:relative; }
   .d-arena canvas { display:block; width:100%; border-radius:16px; box-shadow:0 8px 26px rgba(0,0,0,.4); touch-action:none; }
