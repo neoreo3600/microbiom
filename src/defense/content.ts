@@ -41,16 +41,21 @@ export const CELL_TIERS: CellDef[] = [
 // 적 정의 (speed = 칸/초)
 export const ENEMY_DEFS: Record<string, EnemyDef> = {
   badbac: { type: "badbac", name: "유해균", hue: 95, hp: 34, speed: 0.55, atk: 8, bounty: 3, radius: 0.30 },
-  inflam: { type: "inflam", name: "염증세포", hue: 22, hp: 60, speed: 0.72, atk: 11, bounty: 4, radius: 0.32 },
-  boss_cancer: { type: "boss_cancer", name: "암세포", hue: 288, hp: 950, speed: 0.26, atk: 34, bounty: 70, radius: 0.6, boss: true },
+  virus: { type: "virus", name: "바이러스", hue: 62, hp: 18, speed: 1.05, atk: 6, bounty: 2, radius: 0.24 },
+  inflam: { type: "inflam", name: "염증세포", hue: 22, hp: 62, speed: 0.72, atk: 11, bounty: 4, radius: 0.32 },
+  boss_cancer: { type: "boss_cancer", name: "암세포", hue: 288, hp: 900, speed: 0.26, atk: 34, bounty: 70, radius: 0.6, boss: true },
 };
 
-// 웨이브: 각 원소가 한 웨이브. 스폰 리스트(타입·개수·간격초).
+// 웨이브 캠페인(8) — 난이도 곡선 + 중간·최종 보스. 스폰(타입·개수·간격초).
 export const WAVES: DefenseConfig["waves"] = [
   [{ type: "badbac", n: 6, gap: 0.9 }],
-  [{ type: "badbac", n: 7, gap: 0.7 }, { type: "inflam", n: 4, gap: 1.1 }],
-  [{ type: "inflam", n: 9, gap: 0.6 }, { type: "badbac", n: 6, gap: 0.5 }],
-  [{ type: "badbac", n: 8, gap: 0.5 }, { type: "boss_cancer", n: 1, gap: 0 }, { type: "inflam", n: 6, gap: 0.9 }],
+  [{ type: "badbac", n: 8, gap: 0.7 }],
+  [{ type: "virus", n: 10, gap: 0.5 }],
+  [{ type: "inflam", n: 6, gap: 0.9 }, { type: "badbac", n: 6, gap: 0.6 }],
+  [{ type: "badbac", n: 8, gap: 0.5 }, { type: "boss_cancer", n: 1, gap: 0 }, { type: "virus", n: 8, gap: 0.5 }],
+  [{ type: "virus", n: 12, gap: 0.35 }, { type: "inflam", n: 6, gap: 0.8 }],
+  [{ type: "inflam", n: 10, gap: 0.6 }, { type: "badbac", n: 10, gap: 0.4 }],
+  [{ type: "badbac", n: 6, gap: 0.5 }, { type: "boss_cancer", n: 2, gap: 5 }, { type: "inflam", n: 8, gap: 0.7 }],
 ];
 
 export const DEFENSE_CONFIG: DefenseConfig = {

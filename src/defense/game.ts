@@ -7,6 +7,7 @@ import {
   cellAt, dropCell, buyUpgrade, nextWave, shopCost, type DefenseState, type Cell,
 } from "./engine";
 import { DEFENSE_CONFIG, SHOP, ORGANS, ORGAN_INFO, type OrganKey } from "./content";
+import { loadMeta, saveMeta, META_SHOP, metaCost, metaMaxed, buyMeta, metaBonus, runReward } from "./meta";
 import { sfx, floatText, burst, confetti } from "../game/juice";
 
 const ENEMY_NAME: Record<string, string> = { badbac: "유해균", inflam: "염증세포", boss_cancer: "암세포" };
@@ -39,7 +40,10 @@ export function createDefenseGame(root: HTMLElement) {
     ip: root.querySelector("#d-ip") as HTMLElement,
   };
 
-  let state = createDefenseState(DEFENSE_CONFIG);
+  const meta = loadMeta();
+  const newRun = () => createDefenseState(DEFENSE_CONFIG, metaBonus(meta));
+  let state = newRun();
+  let lastAward = 0;
   let mode: "cell" | "wall" = "cell";
   let running = false;
   let last = 0;
@@ -110,7 +114,7 @@ export function createDefenseGame(root: HTMLElement) {
     });
   });
   (root.querySelector('[data-act="restart"]') as HTMLElement).addEventListener("click", () => {
-    state = createDefenseState(DEFENSE_CONFIG); mode = "cell";
+    state = newRun(); mode = "cell";
     root.querySelectorAll(".d-btn[data-mode]").forEach((x) => x.classList.toggle("on", (x as HTMLElement).dataset.mode === "cell"));
   });
 
@@ -201,26 +205,20 @@ export function createDefenseGame(root: HTMLElement) {
     if (state.status === lastStatus) return; // 상태 변화 시에만 오버레이 재구성
     lastStatus = state.status;
     if (state.status === "ready") {
-      overlay.hidden = false;
-      overlay.innerHTML = `<div class="d-card"><div class="d-t">내몸을 지켜라</div>
-        <p>몰려오는 <b>유해균·질병세포</b>로부터 거점을 지키세요.<br>
-        빈 칸을 눌러 <b>호중구</b>를 놓고, 같은 세포를 <b>드래그해 합쳐</b> 더 강한 세포로!<br>
-        <small>호중구 → 대식세포 → T세포 → NK세포</small></p>
-        <button class="d-start" data-act="start">시작하기</button>
-        <p class="d-disc">게임이며 의학 정보가 아닙니다.</p></div>`;
-      const sb = overlay.querySelector('[data-act="start"]') as HTMLElement | null;
-      if (sb) sb.addEventListener("click", () => { startGame(state); sfx.phase(); });
+      renderLobby();
     } else if (state.status === "won") {
       overlay.hidden = false;
       overlay.innerHTML = `<div class="d-card"><div class="d-t win">🏆 방어 성공!</div>
-        <p>거점을 지켜냈습니다. 처치 <b>${state.kills}</b> · 거점 <b>${Math.ceil(state.coreHp)}</b> 유지</p>
-        <button class="d-start" data-act="restart2">다시 도전</button></div>`;
+        <p>모든 웨이브를 막아냈습니다. 처치 <b>${state.kills}</b> · 거점 <b>${Math.ceil(state.coreHp)}</b> 유지</p>
+        <p class="d-award">🧫 항체 <b>+${lastAward}</b> 획득</p>
+        <div class="d-endbtns"><button class="d-start alt" data-act="lobby">🧫 강화(로비)</button><button class="d-start" data-act="restart2">다시 도전</button></div></div>`;
       wire2();
     } else if (state.status === "lost") {
       overlay.hidden = false;
       overlay.innerHTML = `<div class="d-card"><div class="d-t lose">거점 붕괴…</div>
         <p>웨이브 ${state.wave + 1}에서 무너졌습니다. 처치 <b>${state.kills}</b></p>
-        <button class="d-start" data-act="restart2">다시 도전</button></div>`;
+        <p class="d-award">🧫 항체 <b>+${lastAward}</b> 획득</p>
+        <div class="d-endbtns"><button class="d-start alt" data-act="lobby">🧫 강화(로비)</button><button class="d-start" data-act="restart2">다시 도전</button></div></div>`;
       wire2();
     } else if (state.status === "shop") {
       renderShopPanel();
@@ -230,7 +228,35 @@ export function createDefenseGame(root: HTMLElement) {
   }
   function wire2() {
     const b = overlay.querySelector('[data-act="restart2"]') as HTMLElement | null;
-    if (b) b.addEventListener("click", () => { state = createDefenseState(DEFENSE_CONFIG); startGame(state); sfx.phase(); });
+    if (b) b.addEventListener("click", () => { state = newRun(); startGame(state); sfx.phase(); });
+    const lb = overlay.querySelector('[data-act="lobby"]') as HTMLElement | null;
+    if (lb) lb.addEventListener("click", () => { state = newRun(); sfx.chime(); });
+  }
+  function renderLobby() {
+    overlay.hidden = false;
+    const items = META_SHOP.map((it) => {
+      const cost = metaCost(meta, it);
+      const lv = meta.up[it.id] ?? 0;
+      const maxed = metaMaxed(meta, it);
+      const can = !maxed && meta.antibody >= cost;
+      return `<button class="d-shop-item ${can ? "" : "dis"}" data-meta="${it.id}" ${can ? "" : "disabled"}>
+        <span class="si-ic">${it.icon}</span>
+        <span class="si-tx"><b>${it.name}</b> <small>Lv${lv}/${it.max}</small><br><small>${it.desc}</small></span>
+        <span class="si-cost">${maxed ? "MAX" : "🧫" + cost}</span></button>`;
+    }).join("");
+    overlay.innerHTML = `<div class="d-card shop"><div class="d-t">내몸을 지켜라</div>
+      <p>세포를 놓고 <b>합쳐</b>(호중구→NK) 유해균으로부터 거점을 지키세요.</p>
+      <div class="d-meta-h">🧫 항체 <b>${meta.antibody}</b> · 영구 강화</div>
+      <div class="d-shop">${items}</div>
+      <button class="d-start" data-act="start">▶ 시작 (8웨이브)</button>
+      <p class="d-disc">게임이며 의학 정보가 아닙니다.</p></div>`;
+    overlay.querySelectorAll<HTMLElement>("[data-meta]").forEach((b) => b.addEventListener("click", () => {
+      const it = META_SHOP.find((x) => x.id === b.dataset.meta)!;
+      if (buyMeta(meta, it)) { sfx.chime(); state = newRun(); } else sfx.blocked();
+      renderLobby();
+    }));
+    const sb = overlay.querySelector('[data-act="start"]') as HTMLElement | null;
+    if (sb) sb.addEventListener("click", () => { startGame(state); sfx.phase(); });
   }
   function renderShopPanel() {
     overlay.hidden = false;
@@ -264,8 +290,18 @@ export function createDefenseGame(root: HTMLElement) {
     last = now;
     step(state, dt);
     processEvents();
-    if (state.status === "won" && !wonFx) { wonFx = true; lostFx = false; sfx.win(); confetti(); }
-    if (state.status === "lost" && !lostFx) { lostFx = true; sfx.blocked(); }
+    if (state.status === "won" && !wonFx) {
+      wonFx = true; lostFx = false;
+      lastAward = runReward(state.totalWaves, state.kills, true);
+      meta.antibody += lastAward; saveMeta(meta);
+      sfx.win(); confetti();
+    }
+    if (state.status === "lost" && !lostFx) {
+      lostFx = true;
+      lastAward = runReward(Math.max(0, state.wave), state.kills, false);
+      meta.antibody += lastAward; saveMeta(meta);
+      sfx.blocked();
+    }
     if (state.status === "playing") { wonFx = false; lostFx = false; }
     render();
     requestAnimationFrame(frame);
@@ -415,6 +451,18 @@ function drawEnemy(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: num
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.closePath(); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 1.4; ctx.strokeStyle = stroke; ctx.stroke();
+  } else if (type === "virus") {
+    // 바이러스 — 수용체 손잡이가 달린 캡시드(육각)
+    ctx.strokeStyle = `hsl(${hue} 55% 44%)`; ctx.lineWidth = 1.3; ctx.lineCap = "round";
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r * 0.78, cy + Math.sin(a) * r * 0.78);
+      ctx.lineTo(cx + Math.cos(a) * r * 1.24, cy + Math.sin(a) * r * 1.24); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r * 1.32, cy + Math.sin(a) * r * 1.32, r * 0.13, 0, 7);
+      ctx.fillStyle = `hsl(${hue} 60% 52%)`; ctx.fill();
+    }
+    polarPath(ctx, cx, cy, () => r * 0.86, 6);
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 1.4; ctx.strokeStyle = stroke; ctx.stroke();
   } else {
     // 암세포(보스) — 여러 덩어리가 뭉친 불규칙 종괴
     for (const [dx, dy, s] of [[0, 0, 1], [-0.55, -0.2, 0.7], [0.5, -0.3, 0.65], [0.2, 0.5, 0.7], [-0.4, 0.45, 0.6]] as const) {
@@ -520,6 +568,14 @@ function injectCss() {
   .si-tx b { font-family:'Jua',sans-serif; font-size:14px; }
   .si-tx small { color:#ada3ba; }
   .si-cost { font-family:'Jua',sans-serif; color:#8fe9b6; white-space:nowrap; }
+  .d-meta-h { font-size:13px; color:#c9a2f7; margin:2px 0 8px; }
+  .d-meta-h b { font-family:'Jua',sans-serif; color:#e9d5ff; }
+  .d-award { color:#c9a2f7; font-size:14px; margin:6px 0 12px; }
+  .d-award b { font-family:'Jua',sans-serif; color:#e9d5ff; }
+  .d-endbtns { display:flex; gap:8px; }
+  .d-endbtns .d-start { flex:1; padding:13px 8px; font-size:14px; }
+  .d-start.alt { background:linear-gradient(160deg,#d8b4fe,#c9a2f7); box-shadow:0 4px 0 #9a6fc7; color:#2b1440; }
+  .d-start.alt:active { box-shadow:0 2px 0 #9a6fc7; }
   .d-ef { height:100%; background:linear-gradient(90deg,#ffd36b,#ffb27a); border-radius:99px; transition:width .15s; }
   .d-arena { position:relative; }
   .d-arena canvas { display:block; width:100%; border-radius:16px; box-shadow:0 8px 26px rgba(0,0,0,.4); touch-action:none; }

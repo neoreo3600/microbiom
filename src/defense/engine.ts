@@ -50,14 +50,21 @@ const dmgMulOf = (s: DefenseState) => 1 + (s.upg.dmg ?? 0) * 0.15;
 let idc = 1;
 const nid = () => idc++;
 
-export function createDefenseState(cfg: DefenseConfig): DefenseState {
+export interface StartBonus { energyStart: number; coreHp: number; dmgLv: number; regenLv: number; marrowLv: number; startIp: number; }
+
+export function createDefenseState(cfg: DefenseConfig, bonus?: StartBonus): DefenseState {
+  const upg: Record<string, number> = {};
+  if (bonus?.dmgLv) upg.dmg = bonus.dmgLv;
+  if (bonus?.regenLv) upg.regen = bonus.regenLv;
+  if (bonus?.marrowLv) upg.marrow = bonus.marrowLv;
+  const coreHp = cfg.coreHp + (bonus?.coreHp ?? 0);
   return {
     cfg, cells: [], enemies: [], projectiles: [],
-    energy: cfg.energyStart, coreHp: cfg.coreHp, coreMax: cfg.coreHp,
+    energy: cfg.energyStart + (bonus?.energyStart ?? 0), coreHp, coreMax: coreHp,
     wave: -1, totalWaves: cfg.waves.length,
     status: "ready", time: 0, intermission: 0,
     queue: [], spawned: 0, nextId: 0, kills: 0,
-    ip: 0, upg: {}, marrowTimer: 0, events: [],
+    ip: bonus?.startIp ?? 0, upg, marrowTimer: 0, events: [],
   };
 }
 
