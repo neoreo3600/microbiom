@@ -30,6 +30,11 @@ const METER_META: Record<MeterKey, { label: string; color: string }> = {
   mind: { label: "빛", color: "#c084fc" },
 };
 
+const UP_ICON: Record<string, string> = {
+  metabolism: "🔥", enzyme: "🧪", division: "🧫", symbiosis: "🤝",
+  core: "🧬", replicate: "♻️", flux: "🌊", membrane: "🛡", cortisol: "🌙",
+};
+
 const PHASES: { key: string; label: string }[] = [
   { key: "circulation", label: "순환" },
   { key: "purification", label: "정화" },
@@ -317,15 +322,22 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
     } catch {
       return "";
     }
+    const cast = ["lacto", "akker", "treg", "apex"]
+      .map((id) => UNITS.find((u) => u.id === id))
+      .filter((u): u is (typeof UNITS)[number] => !!u)
+      .map((u) => `<span>${unitAvatar(u, 46)}</span>`).join("");
+    const faces = HOSTS.map((h) => `<span>${hostPortrait(h.id, 34)}</span>`).join("");
     return `<div class="g-overlay onboard"><div class="g-intro">
+      <div class="g-intro-cast">${cast}</div>
       <div class="g-title">속나라</div>
       <p class="g-intro-lead">당신은 한 사람의 몸속 생태계를 돌보는 <b>이름 없는 손길</b>입니다.<br>
         무너진 균형을 <b>순환·정화·재생</b>으로 되돌리세요.</p>
       <div class="g-intro-hands">
-        <div><b class="i1">순환</b> 막힌 것을 연다 <small>물길·온기</small></div>
-        <div><b class="i2">정화</b> 쌓인 것을 비운다 <small>염증·게이지</small></div>
-        <div><b class="i3">재생</b> 생태계를 다시 키운다 <small>숲·빛·뿌리</small></div>
+        <div><b class="i1">💧 순환</b> 막힌 것을 연다 <small>물길·온기</small></div>
+        <div><b class="i2">🫧 정화</b> 쌓인 것을 비운다 <small>염증·게이지</small></div>
+        <div><b class="i3">🌱 재생</b> 생태계를 다시 키운다 <small>숲·빛·뿌리</small></div>
       </div>
+      <div class="g-intro-faces"><small class="g-muted">당신이 도울 사람들</small><div class="ff">${faces}</div></div>
       <p class="g-intro-disc">이 게임은 몸속 생태계를 다루는 <b>은유적 체험</b>이며 <b>의학적 조언이 아닙니다</b>.
         실제 질병은 전문적인 진단과 치료가 필요합니다.</p>
       <button class="g-primary" data-action="dismissOnboard">시작하기</button>
@@ -347,12 +359,13 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
     const genes = s.prestige.genes[C.PRESTIGE_CURRENCY] ?? new Decimal(0);
     const evoCost = applyCostModifiers(s, C.RESOURCE_IDS.EP, computeCost(C.TIER.cost, g.tier), now);
     const canEvo = g.tier < g.maxTier && ep.gte(evoCost);
+    const icon = (id: string) => UP_ICON[id] ?? "✨";
     const ups = C.UPGRADES.map((up) => {
       const maxed = up.maxLevel !== undefined && up.level >= up.maxLevel;
       const cost = nextCost(s, up, now);
       const ok = !maxed && s.resources[up.costResource].amount.gte(cost);
       return `<button class="g-buy" data-action="buyUpgrade" data-id="${up.id}" ${ok ? "" : "disabled"}>
-        <span>${up.id} <small>Lv ${up.level}${up.maxLevel ? "/" + up.maxLevel : ""}</small></span>
+        <span><span class="g-buy-ic">${icon(up.id)}</span>${up.id} <small>Lv ${up.level}${up.maxLevel ? "/" + up.maxLevel : ""}</small></span>
         <span class="g-cost">${maxed ? "MAX" : fmt(cost) + " EP"}</span></button>`;
     }).join("");
     const perms = C.PRESTIGE.permanentUpgrades.map((up) => {
@@ -360,7 +373,7 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
       const cost = nextCost(s, up, now);
       const ok = !maxed && genes.gte(cost);
       return `<button class="g-buy" data-action="buyPermanent" data-id="${up.id}" ${ok ? "" : "disabled"}>
-        <span>${up.id} <small>Lv ${up.level}${up.maxLevel ? "/" + up.maxLevel : ""}</small></span>
+        <span><span class="g-buy-ic">${icon(up.id)}</span>${up.id} <small>Lv ${up.level}${up.maxLevel ? "/" + up.maxLevel : ""}</small></span>
         <span class="g-cost">${maxed ? "MAX" : fmt(cost) + " g"}</span></button>`;
     }).join("");
     return `
@@ -371,13 +384,13 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
       <div class="g-card">
         <div class="g-cardh">진화 · ${g.id} tier ${g.tier}/${g.maxTier}</div>
         <button class="g-buy" data-action="evolve" ${canEvo ? "" : "disabled"}>
-          <span>진화 → tier ${g.tier + 1} <small>(생산 ×${fmt(C.TIER.mult)})</small></span>
+          <span><span class="g-buy-ic">🧫</span>진화 → tier ${g.tier + 1} <small>(생산 ×${fmt(C.TIER.mult)})</small></span>
           <span class="g-cost">${g.tier >= g.maxTier ? "MAX" : fmt(evoCost) + " EP"}</span></button>
       </div>
       <div class="g-card"><div class="g-cardh">업그레이드 (EP)</div>${ups}</div>
       <div class="g-card"><div class="g-cardh">영구 트리 (genes)</div>${perms}</div>
       <div class="g-card"><div class="g-cardh">돌연변이 도감 · ${s.collection.size}종</div>
-        <button class="g-buy" data-action="draw"><span>돌연변이 뽑기 <small>(무료·생산 강화)</small></span><span class="g-cost">뽑기</span></button></div>`;
+        <button class="g-buy" data-action="draw"><span><span class="g-buy-ic">🧬</span>돌연변이 뽑기 <small>(무료·생산 강화)</small></span><span class="g-cost">뽑기</span></button></div>`;
   }
 
   // ── 로스터 탭 ──
@@ -389,7 +402,7 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
       .map((u) => {
         const n = unitCount(s, u.id);
         const rel = isRelevant(u, bossId);
-        return `<div class="g-unit ${n > 0 ? "" : "dim"}">
+        return `<div class="g-unit ${n > 0 ? `own rb-${u.rarity}` : "dim"}">
           <span class="g-uart ${n > 0 ? "" : "locked"}">${unitAvatar(u, 46)}</span>
           <div class="g-utxt">
             <div><span class="${rel ? "g-rel" : ""}">${rel ? "★ " : ""}${u.name}</span>
@@ -397,8 +410,10 @@ export function createGameUI(root: HTMLElement, ctx: InspectorCtx) {
             <small class="g-muted">${u.role}</small>
           </div></div>`;
       }).join("");
+    const pct = ((owned / UNITS.length) * 100).toFixed(0);
     return `
       <div class="g-cardtitle">히어로 로스터 <span class="g-muted">${owned}/${UNITS.length}</span></div>
+      <div class="g-progress"><div class="g-progress-f" style="width:${pct}%"></div></div>
       <button class="g-primary" data-action="drawHero">🎬 히어로 뽑기 (광고)</button>
       <div class="g-muted" style="margin:8px 0">★ = 현재 보스에 특히 유효 · 배치 수만큼 스택 · 이주해도 유지</div>
       <div class="g-units">${rows}</div>`;
@@ -529,6 +544,19 @@ function injectStyles() {
   .g-units { display:flex; flex-direction:column; gap:8px; }
   .g-unit { background:var(--surface); border-radius:var(--radius); padding:9px 13px; display:flex; align-items:center; gap:11px; box-shadow:var(--sh-sm),var(--hi); }
   .g-unit.dim { opacity:.6; }
+  .g-unit.own { border-left:3px solid var(--line); }
+  .g-unit.rb-common { border-left-color:#a49bb0; }
+  .g-unit.rb-rare { border-left-color:var(--sky); }
+  .g-unit.rb-epic { border-left-color:var(--lilac); }
+  .g-unit.rb-legendary { border-left-color:var(--honey); box-shadow:0 0 0 1px rgba(255,211,107,.25),var(--sh-sm),var(--hi); }
+  .g-progress { height:8px; background:rgba(0,0,0,.28); border-radius:var(--pill); overflow:hidden; margin-bottom:10px; box-shadow:inset 0 1px 3px rgba(0,0,0,.35); }
+  .g-progress-f { height:100%; background:linear-gradient(90deg,var(--mint),var(--sky)); border-radius:var(--pill); transition:width .5s cubic-bezier(.34,1.2,.5,1); }
+  .g-buy-ic { display:inline-block; width:20px; text-align:center; margin-right:4px; }
+  .g-intro-cast { display:flex; justify-content:center; gap:4px; margin-bottom:4px; }
+  .g-intro-cast span { filter:drop-shadow(0 2px 4px rgba(0,0,0,.35)); }
+  .g-intro-faces { text-align:center; margin:2px 0 14px; }
+  .g-intro-faces .ff { display:flex; justify-content:center; gap:4px; margin-top:5px; }
+  .g-intro-faces .ff span { filter:drop-shadow(0 1px 3px rgba(0,0,0,.35)); }
   .g-uart { flex:0 0 auto; width:46px; height:46px; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
   .g-uart.locked { filter:grayscale(1) brightness(.72); opacity:.7; }
   .g-utxt { min-width:0; }
