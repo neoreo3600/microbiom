@@ -38,6 +38,7 @@ import type { GameState } from "./engine/state";
 import * as C from "./content/config";
 import { createInspector, type InspectorCtx } from "./debug/inspector";
 import { createGameUI } from "./game/gameUI";
+import { createDefenseGame } from "./defense/game";
 
 // ── 업그레이드 레벨을 state.modifiers 로부터 재동기화 ──────────────
 // upgrade level 은 별도 저장하지 않고 "해당 source 의 modifier 개수" 로 파생.
@@ -83,7 +84,7 @@ ensureHostEncounter();
 
 // ── 뷰: 게임 UI + 디버그 인스펙터 (토글) ────────────────────────
 const app = document.getElementById("app")!;
-app.innerHTML = `<button id="viewToggle" style="position:fixed;top:8px;right:8px;z-index:30;background:#1b222b;color:#cbd5e1;border:1px solid #2b3540;border-radius:8px;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer">⚙ 디버그</button><div id="game"></div><div id="debug" hidden></div>`;
+app.innerHTML = `<button id="viewToggle" style="position:fixed;top:8px;right:8px;z-index:30;background:#1b222b;color:#cbd5e1;border:1px solid #2b3540;border-radius:8px;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer">⚙ 디버그</button><button id="defenseToggle" style="position:fixed;top:8px;right:96px;z-index:30;background:linear-gradient(160deg,#8fe9b6,#6fe0a6);color:#16311f;border:none;border-radius:8px;padding:6px 12px;font:inherit;font-weight:700;font-size:12px;cursor:pointer">🛡 지켜라</button><div id="game"></div><div id="debug" hidden></div><div id="defense" hidden></div>`;
 
 const ctx: InspectorCtx = {
   getState: () => state,
@@ -248,6 +249,22 @@ toggleBtn.addEventListener("click", () => {
   document.getElementById("debug")!.hidden = view !== "debug";
   toggleBtn.textContent = view === "game" ? "⚙ 디버그" : "🎮 게임";
   active().render();
+});
+
+// ── 디펜스 모드 《내몸을 지켜라》 토글 ──
+const defenseGame = createDefenseGame(document.getElementById("defense")!);
+const defenseEl = document.getElementById("defense")!;
+const defenseBtn = document.getElementById("defenseToggle")!;
+let inDefense = false;
+defenseBtn.addEventListener("click", () => {
+  inDefense = !inDefense;
+  defenseEl.hidden = !inDefense;
+  document.getElementById("game")!.hidden = inDefense || view !== "game";
+  document.getElementById("debug")!.hidden = inDefense || view !== "debug";
+  toggleBtn.style.display = inDefense ? "none" : "";
+  defenseBtn.textContent = inDefense ? "← 나가기" : "🛡 지켜라";
+  if (inDefense) defenseGame.show();
+  else defenseGame.hide();
 });
 
 // 승리 감지 → 영구 '치유 지혜' 배지 materialize (Decimal은 modifiers 직렬화가 처리)
