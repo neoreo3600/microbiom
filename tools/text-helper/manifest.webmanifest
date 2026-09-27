@@ -1,0 +1,14 @@
+{
+  "name": "글손질 — 글자수·맞춤법·정리",
+  "short_name": "글손질",
+  "description": "글자수·바이트 계산, 한국어 맞춤법 점검, 텍스트 정리. 모든 처리는 내 기기 안에서만.",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F3F5F8",
+  "theme_color": "#2C4C9C",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

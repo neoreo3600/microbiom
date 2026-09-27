@@ -299,3 +299,10 @@ export const NAFLD: Boss = {
 
 스토리·세계관·캐릭터·테마 / 아트·애니메이션·사운드·연출 / 실제 광고 SDK(버튼 스텁으로 대체) /
 서버·계정·결제·네트워크 / 세련된 UI(디버그 계측 화면으로 충분).
+
+---
+
+## 부록: 글손질 (`tools/text-helper/`)
+
+게임과 별개의 독립 실용 도구입니다. 글자수·바이트 계산, 한국어 맞춤법 점검(규칙 기반), 텍스트 정리를 브라우저 안에서만 처리합니다.
+빌드 없이 `tools/text-helper/index.html`을 열면 됩니다. 자세한 내용은 [`tools/text-helper/README.md`](tools/text-helper/README.md).
